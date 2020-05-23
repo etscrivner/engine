@@ -29,7 +29,7 @@ BUILD_TARGET=engine
 BUILD_LIBRARY_TARGET=game
 BUILD_CONFIG=debug
 
-CXXFLAGS=-Wall -std=c++11 -fno-rtti -fno-exceptions -Isource -Isource/game
+CXXFLAGS=-Wall -std=c++11 -fno-rtti -fno-exceptions -Isource -Isource/game $(BUILDFLAGS)
 
 # Build flags
 ifeq ($(BUILD_CONFIG),debug)
@@ -57,7 +57,8 @@ ifeq ($(OS),linux)
 else ifeq ($(OS),macos)
   GAME_EXECUTABLE=$(BUILD_DIR)/$(BUILD_TARGET)
   GAME_LIBRARY=$(BUILD_DIR)/lib$(BUILD_LIBRARY_TARGET).dylib
-  PLATFORM_BUILD_MAIN=source/platform/macos/macos_main.cc
+  PLATFORM_BUILD_MAIN=source/platform/macos/macos_main.m
+  LDFLAGS+=-ldl -framework Cocoa -framework OpenGL
   CXXFLAGS_LIBRARY=-dynamiclib
 else ifeq ($(OS),win)
   GAME_EXECUTABLE=$(BUILD_DIR)/$(BUILD_TARGET)
