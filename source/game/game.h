@@ -3,6 +3,16 @@
 
 #include "common/language_layer.h"
 
+#ifdef PLATFORM_MACOS
+#include <OpenGL/gl.h>
+#include <OpenGL/glu.h>
+#include <OpenGL/glext.h>
+#else
+#include <GL/gl.h>
+#include <GL/glu.h>
+#include <GL/glext.h>
+#endif
+
 // Game options
 #define DEFAULT_TARGET_FPS 60.0f
 #define PERMANENT_STORAGE_SIZE Megabytes(256)

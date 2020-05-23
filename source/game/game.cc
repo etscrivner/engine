@@ -1,7 +1,5 @@
 #include <stdio.h>
 
-#include <GL/gl.h>
-
 #include "game.h"
 #include "common/language_layer.h"
 

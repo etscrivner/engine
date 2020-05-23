@@ -16,9 +16,7 @@
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrandr.h>
 
-#include <GL/gl.h>
 #include <GL/glx.h>
-#include <GL/glu.h>
 
 #include "game.h"
 
@@ -288,7 +286,7 @@ int main() {
 
       XSetWindowAttributes WindowAttribs;
       WindowAttribs.colormap = GLColorMap;
-      WindowAttribs.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask;
+      WindowAttribs.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask;
 
       // Create a window on the default screen
       i32 DefaultScreen = XDefaultScreen(CurrentDisplay);
