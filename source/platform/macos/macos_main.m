@@ -94,7 +94,7 @@ typedef struct game_library {
 
 void GameLibraryOpen(game_library *Game)
 {
-  bool ForceUpdate = false;
+  bool ForceUpdate = (Game->Handle == NULL);
 
   if (!IsValid(&Game->LibraryWatcher))
   {
@@ -156,6 +156,7 @@ void GameLibraryClose(game_library *Game)
   }
 }
 
+///////////////////////////////////////////////////////////////////////////////
 
 @class PlatformAppDelegate;
 
@@ -305,7 +306,6 @@ OSXCocoaContext OSXInitCocoaContext(NSString* AppName, f32 WindowWidth, f32 Wind
   );
 
   NSWindow *Window = [[NSWindow alloc] initWithContentRect:InitialFrame styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable backing:NSBackingStoreBuffered defer:NO];
-  //[Window setBackgroundColor: NSColor.redColor];
   [Window setDelegate:Result.AppDelegate];
 
   NSView *View = [Window contentView];
@@ -341,6 +341,8 @@ void OSXProcessPendingMessages(platform_state* Platform)
     }
   } while(Event != nil);
 }
+
+///////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char* argv[])
 {

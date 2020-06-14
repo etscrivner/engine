@@ -1,0 +1,36 @@
+#ifdef VERTEX_SHADER
+out vec2 UV;
+
+void main() {
+  vec4 Vertices[] = vec4[](
+    vec4(0, 0, 0, 1),
+    vec4(0, 1, 0, 1),
+    vec4(1, 0, 0, 1),
+    vec4(1, 1, 0, 1)
+  );
+  UV = (Vertices[gl_VertexID] * 2 - 1).xy;
+  gl_Position = (Vertices[gl_VertexID] * 2 - 1);
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+in vec2 UV;
+
+uniform vec2 Mouse;
+uniform vec2 RenderDim;
+uniform float Time;
+
+out vec4 ResultingColor;
+
+void main() {
+  vec2 M = Mouse / RenderDim;
+  ResultingColor = (
+    (step(-0.5 * sin(2.0*Time), UV.x) * step(-0.5 * cos(0.2*Time), UV.y) * step(-0.5, -UV.x) * step(-0.5, -UV.y) * vec4(M, 0.0, 0.5))
+  );
+#if 1
+  ResultingColor += (
+    (step(-0.25 * sin(8*Time), UV.x) * step(-0.25, UV.y) * step(-0.75, -UV.x) * step(-0.75, -UV.y) * vec4(0.75, 0.3, 0.0, 0.1f))
+  );
+#endif
+}
+#endif

@@ -29,7 +29,7 @@ BUILD_TARGET=engine
 BUILD_LIBRARY_TARGET=game
 BUILD_CONFIG=debug
 
-CXXFLAGS=-Wall -std=c++11 -fno-rtti -fno-exceptions -Isource -Isource/game $(BUILDFLAGS)
+CXXFLAGS=-std=c++11 -Wall -Wextra -Wno-writable-strings -Wno-unused-parameter -Wno-unused-function -fno-rtti -fno-exceptions -Isource -Isource/game $(BUILDFLAGS)
 
 # Build flags
 ifeq ($(BUILD_CONFIG),debug)
@@ -45,20 +45,36 @@ else
 endif
 
 # Unity build
-LIBRARY_FILES=source/game/game.h source/game/game.cc
+LIBRARY_FILES=source/common/language_layer.h \
+	source/common/memory_arena.h \
+	source/common/watched_file.h \
+	source/game/game.h \
+	source/game/game.cc \
+	source/game/renderer.h \
+	source/game/renderer.cc \
+	source/game/opengl_procedure_list.h \
+	source/game/shaders.h \
+        source/game/shaders.cc
+
 LIBRARY_BUILD_MAIN=source/game/game.cc
 
 ifeq ($(OS),linux)
   GAME_EXECUTABLE=$(BUILD_DIR)/$(BUILD_TARGET)
   GAME_LIBRARY=$(BUILD_DIR)/lib$(BUILD_LIBRARY_TARGET).so
   PLATFORM_BUILD_MAIN=source/platform/linux/linux_main.cc
-  LDFLAGS+=-ldl $(shell pkg-config x11 --libs) $(shell pkg-config xinerama --libs) $(shell pkg-config gl --libs) $(shell pkg-config glx --libs)
+  # X11 (Window Manager)
+  # OpenGL (Hardware-accelerated Graphics)
+  # ALSA (Audio)
+  LDFLAGS+=-lm -ldl \
+	$(shell pkg-config x11 --libs) $(shell pkg-config xinerama --libs) \
+	$(shell pkg-config gl --libs) $(shell pkg-config glu --libs) $(shell pkg-config glx --libs) \
+	$(shell pkg-config alsa --libs)
   CXXFLAGS_LIBRARY=-shared -fPIC
 else ifeq ($(OS),macos)
   GAME_EXECUTABLE=$(BUILD_DIR)/$(BUILD_TARGET)
   GAME_LIBRARY=$(BUILD_DIR)/lib$(BUILD_LIBRARY_TARGET).dylib
   PLATFORM_BUILD_MAIN=source/platform/macos/macos_main.m
-  LDFLAGS+=-ldl -framework Cocoa -framework OpenGL
+  LDFLAGS+=-ldl -framework Cocoa -framework OpenGL -framework CoreAudio
   CXXFLAGS_LIBRARY=-dynamiclib
 else ifeq ($(OS),win)
   GAME_EXECUTABLE=$(BUILD_DIR)/$(BUILD_TARGET)
@@ -71,12 +87,18 @@ endif
 all: $(GAME_LIBRARY) $(GAME_EXECUTABLE)
 
 $(GAME_EXECUTABLE): build $(PLATFORM_BUILD_MAIN)
+	@echo "Building Platform..."
 	@$(CXX) $(CXXFLAGS) -o $(GAME_EXECUTABLE) $(PLATFORM_BUILD_MAIN) $(LDFLAGS)
 
 $(GAME_LIBRARY): build $(LIBRARY_BUILD_MAIN) $(LIBRARY_FILES)
+	@echo "Creating Lockfile"
+	@touch $(BUILD_DIR)/build.lock
+	@echo "Building Game..."
 	@$(CXX) $(CXXFLAGS) $(CXXFLAGS_LIBRARY) -o $(GAME_LIBRARY) $(LIBRARY_BUILD_MAIN) $(LDFLAGS)
+	@echo "Removing Lockfile."
+	@rm -rf $(BUILD_DIR)/build.lock
 
-run/game: $(GAME_LIBRARY) $(GAME_EXECUTABLE)
+run/game: $(GAME_LIBRARY) $(GAME_EXECUTABLE) $(PLATFORM_BUILD_MAIN) $(LIBRARY_FILES)
 	cd $(BUILD_DIR) && ./$(BUILD_TARGET)
 
 build:
