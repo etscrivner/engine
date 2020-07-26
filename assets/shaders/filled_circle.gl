@@ -1,0 +1,49 @@
+#ifdef VERTEX_SHADER
+layout (location = 0) in vec2 P0;
+layout (location = 1) in vec2 P1;
+layout (location = 2) in vec2 P2;
+layout (location = 3) in vec2 P3;
+layout (location = 4) in vec3 Circle; // x, y, radius
+layout (location = 5) in vec4 Color;
+
+out vec2 Point;
+out vec3 FragmentCircle;
+out vec4 FragmentColor;
+
+uniform mat4 ViewProjection;
+
+void main()
+{
+  vec2 Vertices[] = vec2[](P0, P1, P2, P3);
+  FragmentColor = Color;
+  FragmentCircle = Circle;
+
+  vec4 WorldSpace = vec4(Vertices[gl_VertexID], 0, 1.0);
+  gl_Position = WorldSpace * ViewProjection;
+  Point = Vertices[gl_VertexID];
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+in vec2 Point;
+in vec3 FragmentCircle;
+in vec4 FragmentColor;
+
+out vec4 ResultingColor;
+
+void main()
+{
+  vec2 Ray = FragmentCircle.xy - Point;
+  float Distance = sqrt(dot(Ray, Ray));
+
+#if 1
+  if (Distance <= FragmentCircle.z) {
+    ResultingColor = FragmentColor;
+  } else {
+    discard;
+  }
+#else
+  ResultingColor = FragmentColor;
+#endif
+}
+#endif

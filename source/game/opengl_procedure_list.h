@@ -36,6 +36,7 @@ GLProc(GENBUFFERS, GenBuffers)
 GLProc(DELETEBUFFERS, DeleteBuffers)
 GLProc(BINDBUFFER, BindBuffer)
 GLProc(BUFFERDATA, BufferData)
+GLProc(BUFFERSUBDATA, BufferSubData)
 
 // Frame buffers
 GLProc(GENFRAMEBUFFERS, GenFramebuffers)
@@ -43,6 +44,11 @@ GLProc(BINDFRAMEBUFFER, BindFramebuffer)
 GLProc(CHECKFRAMEBUFFERSTATUS, CheckFramebufferStatus)
 GLProc(DELETEFRAMEBUFFERS, DeleteFramebuffers)
 GLProc(FRAMEBUFFERTEXTURE2D, FramebufferTexture2D)
+GLProc(TEXIMAGE2DMULTISAMPLE, TexImage2DMultisample)
+GLProc(BLITFRAMEBUFFER, BlitFramebuffer)
+
+// Drawing
+GLProc(DRAWARRAYSINSTANCED, DrawArraysInstanced)
 
 // Type checks
 GLProc(ISFRAMEBUFFER, IsFramebuffer)

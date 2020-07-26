@@ -1,0 +1,38 @@
+#ifdef VERTEX_SHADER
+layout (location = 0) in vec4 Vertex; // <vec2 pos, vec2 offset>
+layout (location = 1) in vec4 TextColor;
+
+uniform mat4 ViewProjection;
+
+out vec2 UV;
+out vec4 Color;
+
+void main()
+{
+				vec2 Positions[] = vec2[](
+					Vertex.xy,
+					Vertex.xy + vec2(Vertex.z, 0),
+					Vertex.xy + vec2(0, Vertex.w),
+					Vertex.xy + Vertex.zw
+        );
+				vec2 UVs[] = vec2[](vec2(0, 1.0), vec2(1.0, 1.0), vec2(0, 0), vec2(1.0, 0));
+        gl_Position = vec4(Positions[gl_VertexID], 0.0, 1.0) * ViewProjection;
+        UV = UVs[gl_VertexID];
+				Color = TextColor;
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+in vec2 UV;
+in vec4 Color;
+
+uniform sampler2D Texture;
+
+out vec4 ResultColor;
+
+void main()
+{
+        vec4 Sampled = vec4(1.0, 1.0, 1.0, clamp(0, texture(Texture, UV).r, 1));
+        ResultColor = Color * Sampled;
+}
+#endif

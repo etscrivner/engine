@@ -25,11 +25,11 @@ out vec4 ResultingColor;
 void main() {
   vec2 M = Mouse / RenderDim;
   ResultingColor = (
-    (step(-0.5 * sin(2.0*Time), UV.x) * step(-0.5 * cos(0.2*Time), UV.y) * step(-0.5, -UV.x) * step(-0.5, -UV.y) * vec4(M, 0.0, 0.5))
+    (step(-0.5 * sin(2.0*Time), UV.x) * step(-0.5 * cos(0.2*Time), UV.y) * step(-0.5, -UV.x) * step(-0.5, -UV.y) * vec4(M, 0.0, 1.0))
   );
 #if 1
   ResultingColor += (
-    (step(-0.25 * sin(8*Time), UV.x) * step(-0.25, UV.y) * step(-0.75, -UV.x) * step(-0.75, -UV.y) * vec4(0.75, 0.3, 0.0, 0.1f))
+    (step(-0.25 * sin(8*Time), UV.x) * step(-0.25, UV.y) * step(-0.75, -UV.x) * step(-0.75, -UV.y) * vec4(0.75, 0.3, 0.0, 0.5f))
   );
 #endif
 }

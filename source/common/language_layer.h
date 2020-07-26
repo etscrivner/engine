@@ -27,6 +27,7 @@ typedef i32 b32;
 #define internal      static
 #define local_persist static
 
+#define foreach(I, Count) for(u32 (I) = 0; (I) < (u32)(Count); ++(I))
 #define ArrayCount(Array) ((sizeof(Array))/(sizeof((Array)[0])))
 #define UNUSED(X) (void)(X)
 
@@ -55,6 +56,24 @@ typedef i32 b32;
 #define AbsoluteValue abs
 #define MemoryCopy memcpy
 
+#define Align8(Value) (((Value) + 7) & ~7)
+
+u32 NextPowerOf2(u32 value)
+{
+    if(value > 0)
+    {
+      value--;
+      value |= value>>1;
+      value |= value>>2;
+      value |= value>>4;
+      value |= value>>8;
+      value |= value>>16;
+      return value+1;
+    }
+
+    return value;
+}
+
 void ZeroMemory(u8 *Memory, umm SizeBytes)
 {
   memset(Memory, 0, SizeBytes);
@@ -62,15 +81,29 @@ void ZeroMemory(u8 *Memory, umm SizeBytes)
 
 #define ClearMemory(Value) ZeroMemory((u8*)&Value, sizeof(Value));
 
+internal inline u32 SafeTruncateUInt64(u64 Value)
+{
+  Assert(Value <= 0xFFFFFFFF);
+  return (u32)Value;
+}
+
+internal inline f32 RadiansToDegrees(f32 AngleRadians) {
+  return AngleRadians * (180.0f / PI);
+}
+
+internal inline f32 DegreesToRadians(f32 AngleDegrees) {
+  return AngleDegrees * (PI / 180.0f);
+}
+
 internal inline f32 Clamp(f32 Value, f32 Min, f32 Max) {
   f32 Result = Value;
-
+  
   if (Value > Max) {
     Result = Max;
   } else if (Value < Min) {
     Result = Min;
   }
-
+  
   return(Result);
 }
 
@@ -87,13 +120,30 @@ internal inline f32 Truncate(f32 Value) {
   return trunc(Value);
 }
 
+internal inline f32 Lerp(f32 Start, f32 End, f32 Weight) {
+  f32 Result = (1.0f - Weight)*Start + Weight*End;
+  return(Result);
+}
+
+inline f32 CosLerp(f32 Start, f32 Stop, f32 Weight)
+{
+  f32 CosWeight = (1.0f - cosf(Weight * PI)) / 2.0f;
+  return Start*(1.0f - CosWeight) + Stop * CosWeight;
+}
+
+inline f32 EaseInQuint(f32 Start, f32 Stop, f32 Weight)
+{
+  f32 Quint = Weight * Weight * Weight * Weight * Weight;
+  return Start*(1.0f - Quint) + Stop*Quint;
+}
+
 // SeedRandomNumberGenerator seeds the system random number generator with the
 // current time and returns the random seed used.
 internal u32 SeedRandomNumberGenerator()
 {
   u32 Seed = (u32)time(NULL);
   srand(Seed);
-
+  
   return(Seed);
 }
 
@@ -195,7 +245,7 @@ u32 NextCharUTF32(utf8_iterator Iter) {
   u32 NumBytes = UTF8CodepointLengthBytes(Iter);
   u32 Index = 0;
   u8 *At = Iter.At;
-
+  
   u8 NextCh = At[Index];
   u8 Mask = 0;
   u32 RemainingUnits = 0;
@@ -207,7 +257,7 @@ u32 NextCharUTF32(utf8_iterator Iter) {
       Mask = (Mask >> 1) | 0x80;
     }
   }
-
+  
   u32 Result = NextCh ^ Mask;
   while (RemainingUnits-- > 0)
   {
@@ -219,7 +269,7 @@ u32 NextCharUTF32(utf8_iterator Iter) {
     }
     Result |= At[Index++] & 0x3F;
   }
-
+  
   return(Result);
 }
 
@@ -234,7 +284,7 @@ typedef union v2u {
   struct {
     u32 Width, Height;
   };
-
+  
   u32 E[2];
 } v2u;
 
@@ -371,6 +421,11 @@ inline f32 AngleRadiansBetween(v2 A, v2 B) {
   return(acos(Inner(NormA, NormB)));
 }
 
+inline v2 ScreenToClipSpace(v2 ScreenPos, v2 RenderDim) {
+  return(V2((2 * ScreenPos.X) / RenderDim.Width - 1,
+            (2 * ScreenPos.Y) / RenderDim.Height - 1));
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // v3
 ///////////////////////////////////////////////////////////////////////////////
@@ -389,7 +444,7 @@ typedef union v3 {
     v2 XY;
     f32 _Z;
   };
-
+  
   f32 E[3];
 } v3;
 
@@ -464,7 +519,7 @@ inline v3 NOZ(v3 Vec) {
     f32 OneOverMagnitude = 1.0f / Magnitude;
     return Vec * OneOverMagnitude;
   }
-
+  
   return V3(0.0f, 0.0f, 0.0f);
 }
 
@@ -475,10 +530,10 @@ inline f32 Inner(v3 A, v3 B) {
 
 inline v3 Cross(v2 A, v2 B) {
   v3 Result = V3(
-    0,
-    0,
-    A.X*B.Y - A.Y*B.X
-  );
+                 0,
+                 0,
+                 A.X*B.Y - A.Y*B.X
+                 );
   return(Result);
 }
 
@@ -487,7 +542,7 @@ inline v3 Cross(v3 A, v3 B) {
       (A.Y*B.Z - A.Z*B.Y),
       (A.Z*B.X - A.X*B.Z),
       (A.X*B.Y - A.Y*B.X)
-  }};
+    }};
   return(Result);
 }
 
@@ -534,7 +589,7 @@ typedef union v4 {
   struct {
     f32 R, G, B, A;
   };
-
+  
   f32 E[4];
 } v4;
 #pragma pack(pop)
@@ -558,20 +613,20 @@ inline v4 V4(v3 Vec, f32 W) {
 
 inline bool operator !=(v4 Left, v4 Right) {
   return (
-    Left.X != Right.X ||
-    Left.Y != Right.Y ||
-    Left.Width != Right.Width ||
-    Left.Height != Right.Height
-  );
+          Left.X != Right.X ||
+          Left.Y != Right.Y ||
+          Left.Width != Right.Width ||
+          Left.Height != Right.Height
+          );
 }
 
 inline v4 operator *(v4 Left, v4 Right) {
   v4 Result = V4(
-    Left.X * Right.X,
-    Left.Y * Right.Y,
-    Left.Z * Right.Z,
-    Left.W * Right.W
-  );
+                 Left.X * Right.X,
+                 Left.Y * Right.Y,
+                 Left.Z * Right.Z,
+                 Left.W * Right.W
+                 );
   return(Result);
 }
 
@@ -581,7 +636,7 @@ inline v4 operator *(f32 Left, v4 Right) {
       Left * Right.Y,
       Left * Right.Z,
       Left * Right.W
-  }};
+    }};
   return(Result);
 }
 
@@ -591,7 +646,7 @@ inline v4 operator +(v4 Left, v4 Right) {
       Left.Y + Right.Y,
       Left.Z + Right.Z,
       Left.W + Right.W
-  }};
+    }};
   return(Result);
 }
 
@@ -601,7 +656,7 @@ inline v4 operator -(v4 Left, v4 Right) {
       Left.Y - Right.Y,
       Left.Z - Right.Z,
       Left.W - Right.W
-  }};
+    }};
   return(Result);
 }
 
@@ -650,30 +705,30 @@ inline m4x4 Identity4x4() {
       {0, 1, 0, 0},
       {0, 0, 1, 0},
       {0, 0, 0, 1}
-  }};
-
+    }};
+  
   return(Result);
 }
 
 inline b32 operator ==(m4x4 Left, m4x4 Right) {
   b32 Result = true;
-
+  
   for (u32 I = 0; I < 4; ++I) {
     for (u32 J = 0; J < 4; ++J) {
       if (fabs(Left.E[I][J] - Right.E[I][J]) > 0.0005) {
-      //if (Left.E[I][J] != Right.E[I][J]) {
+        //if (Left.E[I][J] != Right.E[I][J]) {
         printf("Mismatch %d %d (%f != %f)\n", I, J, Left.E[I][J], Right.E[I][J]);
         Result = false;
       }
     }
   }
-
+  
   return(Result);
 }
 
 inline m4x4 operator *(m4x4 Left, m4x4 Right) {
   m4x4 Result;
-
+  
   for (u32 I = 0; I < 4; ++I) {
     for (u32 J = 0; J < 4; ++J) {
       Result.E[I][J] = 0.0f;
@@ -682,14 +737,14 @@ inline m4x4 operator *(m4x4 Left, m4x4 Right) {
       }
     }
   }
-
+  
   return(Result);
 }
 
 // Multiply the row vector Left by the matrix Right.
 inline v4 operator *(v4 Left, m4x4 Right) {
   v4 Result = {};
-
+  
   for (u32 I = 0; I < 4; ++I)
   {
     for (u32 J = 0; J < 4; ++J)
@@ -700,14 +755,14 @@ inline v4 operator *(v4 Left, m4x4 Right) {
       Result.E[I] += Left.E[J] * Right.E[I][J];
     }
   }
-
+  
   return(Result);
 }
 
 // Multiply the column vector Right by the matrix Left.
 inline v4 operator *(m4x4 Left, v4 Right) {
   v4 Result = {};
-
+  
   for (u32 Column = 0; Column < 4; ++Column)
   {
     for (u32 Row = 0; Row < 4; ++Row)
@@ -715,7 +770,7 @@ inline v4 operator *(m4x4 Left, v4 Right) {
       Result.E[Column] += Left.E[Row][Column] * Right.E[Row];
     }
   }
-
+  
   return(Result);
 }
 
@@ -751,11 +806,11 @@ inline v2 operator *(v2 Left, m4x4 Right) {
 inline v3 RGBToHSV(v3 RGB)
 {
   v3 Result = {};
-
+  
   f32 MinC = Min(RGB.R, Min(RGB.G, RGB.B));
   f32 MaxC = Max(RGB.R, Max(RGB.G, RGB.B));
   f32 Delta = MaxC - MinC;
-
+  
   if (Delta < 0.0001)
   {
     Result.S = 0;
@@ -763,7 +818,7 @@ inline v3 RGBToHSV(v3 RGB)
     Result.V = MaxC;
     return(Result);
   }
-
+  
   // NOTE(eric): Hue (H)
   if (RGB.R >= MaxC)
   {
@@ -781,14 +836,14 @@ inline v3 RGBToHSV(v3 RGB)
   {
     Result.H = 0;
   }
-
+  
   if (Result.H < 0)
   {
     Result.H += 6.0f;
   }
-
+  
   Result.H /= 6.0f;
-
+  
   // NOTE(eric): Saturation (S)
   if (MaxC == 0)
   {
@@ -798,7 +853,7 @@ inline v3 RGBToHSV(v3 RGB)
   {
     Result.S = Delta / MaxC;
   }
-
+  
   // NOTE(eric): Value (V)
   Result.V = MaxC;
   
@@ -809,15 +864,15 @@ inline v3 RGBToHSV(v3 RGB)
 inline v3 HSVToRGB(v3 HSV)
 {
   v3 Result = {};
-
+  
   f32 Hue = FModF(HSV.H * 360.0f, 360.0f);
   f32 Sat = HSV.S;
   f32 Val = HSV.V;
-
+  
   f32 C = Val * Sat;
   f32 X = C * (1.0f - AbsoluteValue(FModF((Hue / 60.0f), 2) - 1.0f));
   f32 M = Val - C;
-
+  
   if ((Hue >= 0.0f && Hue < 60.0f) || (Hue >= 360.0f && Hue < 420.0f))
   {
     Result.R = C;
@@ -854,7 +909,7 @@ inline v3 HSVToRGB(v3 HSV)
     Result.G = 0;
     Result.B = X;
   }
-
+  
   Result += V3(M, M, M);
   return(Result);
 }
@@ -866,7 +921,7 @@ inline v3 HSVToRGB(v3 HSV)
 inline m4x4 Tranpose(m4x4 Matrix)
 {
   m4x4 Result = {};
-
+  
   for (u32 Y = 0; Y < 4; ++Y)
   {
     for (u32 X = 0; X < 4; ++X)
@@ -874,7 +929,7 @@ inline m4x4 Tranpose(m4x4 Matrix)
       Result.E[Y][X] = Matrix.E[X][Y];
     }
   }
-
+  
   return(Result);
 }
 
@@ -882,166 +937,166 @@ inline m4x4 Inverse(m4x4 Matrix)
 {
   m4x4 Result = {};
   f32 Det = 0.0f;
-
+  
   f32* M = (f32*)Matrix.E;
   f32* Inv = (f32*)Result.E;
-
+  
   Inv[0] = (
-    M[5] * M[10] * M[15] -
-    M[5] * M[11] * M[14] -
-    M[9] * M[6] * M[15] +
-    M[9] * M[7] * M[14] +
-    M[13] * M[6] * M[11] -
-    M[13] * M[7] * M[10]
-  );
-
+            M[5] * M[10] * M[15] -
+            M[5] * M[11] * M[14] -
+            M[9] * M[6] * M[15] +
+            M[9] * M[7] * M[14] +
+            M[13] * M[6] * M[11] -
+            M[13] * M[7] * M[10]
+            );
+  
   Inv[4] = (
-    -M[4]  * M[10] * M[15] +
-    M[4]  * M[11] * M[14] +
-    M[8]  * M[6]  * M[15] -
-    M[8]  * M[7]  * M[14] -
-    M[12] * M[6]  * M[11] +
-    M[12] * M[7]  * M[10]
-  );
-
+            -M[4]  * M[10] * M[15] +
+            M[4]  * M[11] * M[14] +
+            M[8]  * M[6]  * M[15] -
+            M[8]  * M[7]  * M[14] -
+            M[12] * M[6]  * M[11] +
+            M[12] * M[7]  * M[10]
+            );
+  
   Inv[8] = (
-    M[4]  * M[9] * M[15] -
-    M[4]  * M[11] * M[13] -
-    M[8]  * M[5] * M[15] +
-    M[8]  * M[7] * M[13] +
-    M[12] * M[5] * M[11] -
-    M[12] * M[7] * M[9]
-  );
-
+            M[4]  * M[9] * M[15] -
+            M[4]  * M[11] * M[13] -
+            M[8]  * M[5] * M[15] +
+            M[8]  * M[7] * M[13] +
+            M[12] * M[5] * M[11] -
+            M[12] * M[7] * M[9]
+            );
+  
   Inv[12] = (
-    -M[4]  * M[9] * M[14] +
-    M[4]  * M[10] * M[13] +
-    M[8]  * M[5] * M[14] -
-    M[8]  * M[6] * M[13] -
-    M[12] * M[5] * M[10] +
-    M[12] * M[6] * M[9]
-  );
-
+             -M[4]  * M[9] * M[14] +
+             M[4]  * M[10] * M[13] +
+             M[8]  * M[5] * M[14] -
+             M[8]  * M[6] * M[13] -
+             M[12] * M[5] * M[10] +
+             M[12] * M[6] * M[9]
+             );
+  
   Inv[1] = (
-    -M[1]  * M[10] * M[15] +
-    M[1]  * M[11] * M[14] +
-    M[9]  * M[2] * M[15] -
-    M[9]  * M[3] * M[14] -
-    M[13] * M[2] * M[11] +
-    M[13] * M[3] * M[10]
-  );
-
+            -M[1]  * M[10] * M[15] +
+            M[1]  * M[11] * M[14] +
+            M[9]  * M[2] * M[15] -
+            M[9]  * M[3] * M[14] -
+            M[13] * M[2] * M[11] +
+            M[13] * M[3] * M[10]
+            );
+  
   Inv[5] = (
-    M[0]  * M[10] * M[15] -
-    M[0]  * M[11] * M[14] -
-    M[8]  * M[2] * M[15] +
-    M[8]  * M[3] * M[14] +
-    M[12] * M[2] * M[11] -
-    M[12] * M[3] * M[10]
-  );
-
+            M[0]  * M[10] * M[15] -
+            M[0]  * M[11] * M[14] -
+            M[8]  * M[2] * M[15] +
+            M[8]  * M[3] * M[14] +
+            M[12] * M[2] * M[11] -
+            M[12] * M[3] * M[10]
+            );
+  
   Inv[9] = (
-    -M[0]  * M[9] * M[15] +
-    M[0]  * M[11] * M[13] +
-    M[8]  * M[1] * M[15] -
-    M[8]  * M[3] * M[13] -
-    M[12] * M[1] * M[11] +
-    M[12] * M[3] * M[9]
-  );
-
+            -M[0]  * M[9] * M[15] +
+            M[0]  * M[11] * M[13] +
+            M[8]  * M[1] * M[15] -
+            M[8]  * M[3] * M[13] -
+            M[12] * M[1] * M[11] +
+            M[12] * M[3] * M[9]
+            );
+  
   Inv[13] = (
-    M[0]  * M[9] * M[14] -
-    M[0]  * M[10] * M[13] -
-    M[8]  * M[1] * M[14] +
-    M[8]  * M[2] * M[13] +
-    M[12] * M[1] * M[10] -
-    M[12] * M[2] * M[9]
-  );
-
+             M[0]  * M[9] * M[14] -
+             M[0]  * M[10] * M[13] -
+             M[8]  * M[1] * M[14] +
+             M[8]  * M[2] * M[13] +
+             M[12] * M[1] * M[10] -
+             M[12] * M[2] * M[9]
+             );
+  
   Inv[2] = (
-    M[1]  * M[6] * M[15] -
-    M[1]  * M[7] * M[14] -
-    M[5]  * M[2] * M[15] +
-    M[5]  * M[3] * M[14] +
-    M[13] * M[2] * M[7] -
-    M[13] * M[3] * M[6]
-  );
-
+            M[1]  * M[6] * M[15] -
+            M[1]  * M[7] * M[14] -
+            M[5]  * M[2] * M[15] +
+            M[5]  * M[3] * M[14] +
+            M[13] * M[2] * M[7] -
+            M[13] * M[3] * M[6]
+            );
+  
   Inv[6] = (
-    -M[0]  * M[6] * M[15] +
-    M[0]  * M[7] * M[14] +
-    M[4]  * M[2] * M[15] -
-    M[4]  * M[3] * M[14] -
-    M[12] * M[2] * M[7] +
-    M[12] * M[3] * M[6]
-  );
-
+            -M[0]  * M[6] * M[15] +
+            M[0]  * M[7] * M[14] +
+            M[4]  * M[2] * M[15] -
+            M[4]  * M[3] * M[14] -
+            M[12] * M[2] * M[7] +
+            M[12] * M[3] * M[6]
+            );
+  
   Inv[10] = (
-    M[0]  * M[5] * M[15] -
-    M[0]  * M[7] * M[13] -
-    M[4]  * M[1] * M[15] +
-    M[4]  * M[3] * M[13] +
-    M[12] * M[1] * M[7] -
-    M[12] * M[3] * M[5]
-  );
-
+             M[0]  * M[5] * M[15] -
+             M[0]  * M[7] * M[13] -
+             M[4]  * M[1] * M[15] +
+             M[4]  * M[3] * M[13] +
+             M[12] * M[1] * M[7] -
+             M[12] * M[3] * M[5]
+             );
+  
   Inv[14] = (
-    -M[0]  * M[5] * M[14] +
-    M[0]  * M[6] * M[13] +
-    M[4]  * M[1] * M[14] -
-    M[4]  * M[2] * M[13] -
-    M[12] * M[1] * M[6] +
-    M[12] * M[2] * M[5]
-  );
-
+             -M[0]  * M[5] * M[14] +
+             M[0]  * M[6] * M[13] +
+             M[4]  * M[1] * M[14] -
+             M[4]  * M[2] * M[13] -
+             M[12] * M[1] * M[6] +
+             M[12] * M[2] * M[5]
+             );
+  
   Inv[3] = (
-    -M[1] * M[6] * M[11] +
-    M[1] * M[7] * M[10] +
-    M[5] * M[2] * M[11] -
-    M[5] * M[3] * M[10] -
-    M[9] * M[2] * M[7] +
-    M[9] * M[3] * M[6]
-  );
-
+            -M[1] * M[6] * M[11] +
+            M[1] * M[7] * M[10] +
+            M[5] * M[2] * M[11] -
+            M[5] * M[3] * M[10] -
+            M[9] * M[2] * M[7] +
+            M[9] * M[3] * M[6]
+            );
+  
   Inv[7] = (
-    M[0] * M[6] * M[11] -
-    M[0] * M[7] * M[10] -
-    M[4] * M[2] * M[11] +
-    M[4] * M[3] * M[10] +
-    M[8] * M[2] * M[7] -
-    M[8] * M[3] * M[6]
-  );
-
+            M[0] * M[6] * M[11] -
+            M[0] * M[7] * M[10] -
+            M[4] * M[2] * M[11] +
+            M[4] * M[3] * M[10] +
+            M[8] * M[2] * M[7] -
+            M[8] * M[3] * M[6]
+            );
+  
   Inv[11] = (
-    -M[0] * M[5] * M[11] +
-    M[0] * M[7] * M[9] +
-    M[4] * M[1] * M[11] -
-    M[4] * M[3] * M[9] -
-    M[8] * M[1] * M[7] +
-    M[8] * M[3] * M[5]
-  );
-
+             -M[0] * M[5] * M[11] +
+             M[0] * M[7] * M[9] +
+             M[4] * M[1] * M[11] -
+             M[4] * M[3] * M[9] -
+             M[8] * M[1] * M[7] +
+             M[8] * M[3] * M[5]
+             );
+  
   Inv[15] = (
-    M[0] * M[5] * M[10] -
-    M[0] * M[6] * M[9] -
-    M[4] * M[1] * M[10] +
-    M[4] * M[2] * M[9] +
-    M[8] * M[1] * M[6] -
-    M[8] * M[2] * M[5]
-  );
-
+             M[0] * M[5] * M[10] -
+             M[0] * M[6] * M[9] -
+             M[4] * M[1] * M[10] +
+             M[4] * M[2] * M[9] +
+             M[8] * M[1] * M[6] -
+             M[8] * M[2] * M[5]
+             );
+  
   Det = M[0] * Inv[0] + M[1] * Inv[4] + M[2] * Inv[8] + M[3] * Inv[12];
-
+  
   // Trigger an error if we try to invert a non-invertable matrix
   Assert(Det != 0);
-
+  
   Det = 1.0 / Det;
-
+  
   for (u32 I = 0; I < 16; I++)
   {
     Inv[I] *= Det;
   }
-
+  
 #if 0
   m4x4 Test = Result * Matrix;
   if (!(Test == Identity4x4()))
@@ -1057,13 +1112,13 @@ inline m4x4 Inverse(m4x4 Matrix)
     Assert(Test == Identity4x4());
   }
 #endif
-
+  
   return(Result);
 }
 
 inline m4x4 Transpose(m4x4 M) {
   m4x4 Result = {};
-
+  
   for (u32 I = 0; I < 4; ++I)
   {
     for (u32 J = 0; J < 4; ++J)
@@ -1071,25 +1126,25 @@ inline m4x4 Transpose(m4x4 M) {
       Result.E[J][I] = M.E[I][J];
     }
   }
-
+  
   return(Result);
 }
 
-inline m4x4 Orthographic(f32 Left, f32 Right, f32 Top, f32 Bottom, f32 Near, f32 Far) {
+inline m4x4 Orthographic(f32 Left, f32 Right, f32 Bottom, f32 Top, f32 Near, f32 Far) {
   f32 L = Left;
   f32 R = Right;
   f32 T = Top;
   f32 B = Bottom;
   f32 N = Near;
   f32 F = Far;
-
+  
   m4x4 Result = {{
       { 2.0f / (R - L), 0             , 0              , -(R + L) / (R - L) },
       { 0             , 2.0f / (T - B), 0              , -(T + B) / (T - B) },
       { 0             , 0             , -2.0f / (F - N), -(F + N) / (F - N) },
       { 0             , 0             , 0              , 1 }
-  }};
-
+    }};
+  
   return Result;
 }
 
@@ -1099,8 +1154,8 @@ inline m4x4 TranslationMatrix(f32 X, f32 Y, f32 Z) {
       { 0, 1, 0, Y },
       { 0, 0, 1, Z },
       { 0, 0, 0, 1 }
-  }};
-
+    }};
+  
   return Result;
 }
 
@@ -1110,8 +1165,8 @@ inline m4x4 RotationMatrixZ(f32 AngleRadians) {
       {sinf(AngleRadians), cosf(AngleRadians), 0, 0},
       {0, 0, 1, 0},
       {0, 0, 0, 1}
-  }};
-
+    }};
+  
   return(Result);
 }
 
@@ -1121,7 +1176,7 @@ inline m4x4 ScalingMatrix(f32 XScale, f32 YScale, f32 ZScale) {
       { 0, YScale, 0, 0 },
       { 0, 0, ZScale, 0 },
       { 0, 0, 0, 1}
-  }};
+    }};
   return(Result);
 }
 
@@ -1233,12 +1288,12 @@ inline quat NOZ(quat Q) {
 inline m4x4 AsMatrix(quat Quat) {
   f32 NormQ = Norm(Quat);
   f32 Scalar = (NormQ > 0.0) ? (1.0 / NormQ) : 0.0;
-
+  
   f32 Qx = Quat.X * Scalar;
   f32 Qy = Quat.Y * Scalar;
   f32 Qz = Quat.Z * Scalar;
   f32 Qw = Quat.W * Scalar;
-
+  
   // row-major
   // https://stackoverflow.com/questions/1556260/convert-quaternion-rotation-to-rotation-matrix
   m4x4 Result = {{
@@ -1246,8 +1301,8 @@ inline m4x4 AsMatrix(quat Quat) {
       {2.0f*Qx*Qy + 2.0f*Qz*Qw, 1.0f - 2.0f*Qx*Qx - 2.0f*Qz*Qz, 2.0f*Qy*Qz - 2.0f*Qx*Qw, 0.0f},
       {2.0f*Qx*Qz - 2.0f*Qy*Qw, 2.0f*Qy*Qz + 2.0f*Qx*Qw, 1.0f - 2.0f*Qx*Qx - 2.0f*Qy*Qy, 0.0f},
       {0.0f, 0.0f, 0.0f, 1.0f}
-  }};
-
+    }};
+  
   return(Result);
 }
 
@@ -1284,7 +1339,7 @@ inline quat QuatRotation(v3 AxisOfRotation, f32 AngleRadians) {
       AxisOfRotation.Y*SinAngleOver2,
       AxisOfRotation.Z*SinAngleOver2,
       CosF(AngleRadians/2.0f)
-  }};
+    }};
   return(Result);
 }
 
@@ -1310,21 +1365,21 @@ inline circle Circle(v2 Center, f32 Radius)
 internal b32 CirclePointIntersect(circle Circle, v2 Point)
 {
   b32 Result = false;
-
+  
   // Check if point is inside the circle by seeing if the distance from the
   // center of the circle to the point is less than the radius of the circle.
   if (Length(Circle.Center - Point) < Circle.Radius)
   {
     Result = true;
   }
-
+  
   return(Result);
 }
 
 internal b32 CircleCircleIntersect(circle Left, circle Right)
 {
   b32 Result = false;
-
+  
   // Check if circles are overlapping by seeing if the distance between their
   // centers is less than the sum of their radii. If it is equal to the sum of
   // their radii then technically they are just touching but we do not count
@@ -1333,14 +1388,14 @@ internal b32 CircleCircleIntersect(circle Left, circle Right)
   {
     Result = true;
   }
-
+  
   return(Result);
 }
 
 internal b32 RectPointIntersect(v4 Rect, v2 Point)
 {
   b32 Result = true;
-
+  
   if (Point.X < Rect.X ||
       Point.X > Rect.X + Rect.Z ||
       Point.Y < Rect.Y ||
@@ -1348,46 +1403,46 @@ internal b32 RectPointIntersect(v4 Rect, v2 Point)
   {
     Result = false;
   }
-
+  
   return(Result);
 }
 
 internal b32 RectRectIntersect(v4 Left, v4 Right)
 {
   b32 Result = false;
-
+  
   if ((Left.X < (Right.X + Right.Width) && (Left.X + Left.Width) > Right.X) &&
       (Left.Y < (Right.Y + Right.Height) && (Left.Y + Left.Height) > Right.Y)) {
     Result = true;
   }
-
+  
   return(Result);
 }
 
 internal b32 CircleRectIntersect(circle Circle, v4 Rect)
 {
   b32 Result = false;
-
+  
   // Find the closest rectangle edge to the sphere
   v2 TestPoint = Circle.Center;
-
+  
   if (Circle.Center.X < Rect.X) {
     TestPoint.X = Rect.X;
   } else if (Circle.Center.X > Rect.X + Rect.Width) {
     TestPoint.X = Rect.X + Rect.Width;
   }
-
+  
   if (Circle.Center.Y < Rect.Y) {
     TestPoint.Y = Rect.Y;
   } else if (Circle.Center.Y > Rect.Y + Rect.Height) {
     TestPoint.Y = Rect.Y + Rect.Height;
   }
-
+  
   // Test if the edge is inside of the circle
   if (Length(Circle.Center - TestPoint) < Circle.Radius) {
     Result = true;
   }
-
+  
   return(Result);
 }
 
@@ -1431,6 +1486,13 @@ inline v4 ColorGeneratorNextColor(color_generator* Generator)
 // ExtensionInList returns true if the Extension string is in the space-separated ExtensionList
 internal bool ExtensionInList(const char *ExtensionList, char *Extension)
 {
+#if 0
+  if (ExtensionList == NULL || Extension == NULL)
+  {
+    return(false);
+  }
+#endif
+  
   char *Where = strchr(Extension, ' ');
   if (Where || *Extension == '\0')
   {
@@ -1460,5 +1522,104 @@ internal bool ExtensionInList(const char *ExtensionList, char *Extension)
   
   return(false);
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// cross-platform threads/atomics
+///////////////////////////////////////////////////////////////////////////////
+
+#if defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
+// Use software (not hardware) memory barriers to serialize reads/writes when
+// necessary in multi-threading applications.
+#define CompletePreviousReadsBeforeFutureReads asm volatile("" ::: "memory")
+#define CompletePreviousWritesBeforeFutureWrites asm volatile("" ::: "memory")
+
+inline u32 AtomicCompareAndExchangeU32(u32 volatile *Value, u32 New, u32 Expected)
+{
+  u32 Result = __sync_val_compare_and_swap(Value, Expected, New);
+  return(Result);
+}
+
+inline u32 AtomicExchangeU32(u32 volatile *Value, u32 New)
+{
+  u32 Result = __sync_lock_test_and_set(Value, New);
+  return(Result);
+}
+
+inline u64 AtomicExchangeU64(u64 volatile *Value, u64 New)
+{
+  u64 Result = __sync_lock_test_and_set(Value, New);
+  return(Result);
+}
+
+inline u32 AtomicAddU32(u32 volatile *Value, u32 Addend)
+{
+  u64 Result = __sync_fetch_and_add(Value, Addend);
+  return(Result);
+}
+
+inline u64 AtomicAddU64(u64 volatile *Value, u64 Addend)
+{
+  u64 Result = __sync_fetch_and_add(Value, Addend);
+  return(Result);
+}
+
+inline u32 GetThreadID(void)
+{
+  u32 ThreadID;
+  
+#if defined(__APPLE__) && defined(__x86_64__)
+  asm("mov %%gs:0x00,%0" : "=r"(ThreadID));
+#elif defined(__i386__)
+  asm("mov %%gs:0x08,%0" : "=r"(ThreadID));
+#elif defined(__x86_64__)
+  asm("mov %%fs:0x10,%0" : "=r"(ThreadID));
+#else
+#error "Unsupported architecture"
+#endif
+  
+  return(ThreadID);
+}
+#elif defined(PLATFORM_WIN)
+#define CompletePreviousReadsBeforeFutureReads _ReadBarrier()
+#define CompletePreviousWritesBeforeFutureWrites _WriteBarrier()
+
+inline uint32 AtomicCompareExchangeU32(uint32 volatile *Value, uint32 New, uint32 Expected)
+{
+  uint32 Result = _InterlockedCompareExchange((long volatile *)Value, New, Expected);
+  
+  return(Result);
+}
+
+inline u64 AtomicExchangeU64(u64 volatile *Value, u64 New)
+{
+  u64 Result = _InterlockedExchange64((__int64 volatile *)Value, New);
+  
+  return(Result);
+}
+
+inline u32 AtomicAddU32(u32 volatile *Value, u32 Addend)
+{
+  u64 Result = __InterlockedExchangeAdd((long *)Value, Addend);
+  return(Result);
+}
+
+inline u64 AtomicAddU64(u64 volatile *Value, u64 Addend)
+{
+  // NOTE(casey): Returns the original value _prior_ to adding
+  u64 Result = _InterlockedExchangeAdd64((__int64 volatile *)Va = {};lue, Addend);
+  
+  return(Result);
+}
+
+inline u32 GetThreadID(void)
+{
+  u8 *ThreadLocalStorage = (u8 *)__readgsqword(0x30);
+  u32 ThreadID = *(u32 *)(ThreadLocalStorage + 0x48);
+  
+  return(ThreadID);
+}
+#else
+#error "Unsupported platform"
+#endif
 
 #endif // LANGUAGE_LAYER_H

@@ -7,8 +7,15 @@
 
 typedef struct watched_file {
   const char *FilePath;
+  
+#if defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
   ino_t InodeID;
   struct timespec LastModifiedTime;
+#elif defined(PLATFORM_WIN)
+#error watched_file: Windows not implemented yet
+#else
+#error watched_file: Not supported on this platform
+#endif
   
   struct {
     int ReturnValue;

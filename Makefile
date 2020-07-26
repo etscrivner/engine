@@ -23,20 +23,21 @@ endif
 
 # Build information
 CXX=clang
+LIBFREETYPE_VERSION=2.10.2
 
 BUILD_DIR=build
 BUILD_TARGET=engine
 BUILD_LIBRARY_TARGET=game
 BUILD_CONFIG=debug
 
-CXXFLAGS=-std=c++11 -Wall -Wextra -Wno-writable-strings -Wno-unused-parameter -Wno-unused-function -fno-rtti -fno-exceptions -Isource -Isource/game $(BUILDFLAGS)
+CXXFLAGS=-std=c++11 -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-variable -Wno-writable-strings -Wno-unused-parameter -Wno-unused-function -fno-rtti -fno-exceptions -Isource -Isource/game -Ithird-party/freetype-$(LIBFREETYPE_VERSION)/include -Lthird-party/freetype-$(LIBFREETYPE_VERSION)/objs $(BUILDFLAGS)
 
 # Build flags
 ifeq ($(BUILD_CONFIG),debug)
   # Debug flags
   CXXFLAGS+=--debug -DBUILD_DEBUG=1
 
-  # ASAN
+  # ASAN (NOTE: Allocates 20.0 TB of VMEM so will obscure actual memory usage)
   CXXFLAGS+=-fsanitize=address -fno-omit-frame-pointer -D_REENTRANT
 else ifeq ($(BUILD_CONFIG),release)
   CXXFLAGS+=-O3
@@ -54,7 +55,15 @@ LIBRARY_FILES=source/common/language_layer.h \
 	source/game/renderer.cc \
 	source/game/opengl_procedure_list.h \
 	source/game/shaders.h \
-        source/game/shaders.cc
+        source/game/shaders.cc \
+        source/game/textures.h \
+        source/game/textures.cc \
+        source/game/fonts.h \
+        source/game/fonts.cc \
+        source/game/ui/ui.h \
+        source/game/ui/ui.cc \
+	source/game/ui/debug_console.h \
+        source/game/ui/debug_console.cc
 
 LIBRARY_BUILD_MAIN=source/game/game.cc
 
@@ -65,7 +74,7 @@ ifeq ($(OS),linux)
   # X11 (Window Manager)
   # OpenGL (Hardware-accelerated Graphics)
   # ALSA (Audio)
-  LDFLAGS+=-lm -ldl \
+  LDFLAGS+=-lm -ldl -lfreetype -lpthread \
 	$(shell pkg-config x11 --libs) $(shell pkg-config xinerama --libs) \
 	$(shell pkg-config gl --libs) $(shell pkg-config glu --libs) $(shell pkg-config glx --libs) \
 	$(shell pkg-config alsa --libs)
@@ -86,7 +95,7 @@ endif
 
 all: $(GAME_LIBRARY) $(GAME_EXECUTABLE)
 
-$(GAME_EXECUTABLE): build $(PLATFORM_BUILD_MAIN)
+$(GAME_EXECUTABLE): build $(PLATFORM_BUILD_MAIN) source/platform/linux/linux_audio.cc
 	@echo "Building Platform..."
 	@$(CXX) $(CXXFLAGS) -o $(GAME_EXECUTABLE) $(PLATFORM_BUILD_MAIN) $(LDFLAGS)
 

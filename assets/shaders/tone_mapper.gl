@@ -23,15 +23,19 @@ out vec4 ResultingColor;
 void main()
 {
   // TODO: Make Gamma and Exposure inputs to this shader
-  const float Gamma = 2.2;
-  const float Exposure = 5.0;
+  const float Gamma = 1.0;
+  const float Exposure = 2.0;
   vec3 HDRColor = texture(HDRBuffer, UV).rgb;
+
+  // Plain ole gamma correction
+  vec3 Mapped = pow(HDRColor, vec3(1.0 / Gamma));
 
   // Reinhard tone mapping
   //vec3 Mapped = HDRColor / (HDRColor + vec3(1.0));
-  // Exposure tone mapping
-  vec3 Mapped = vec3(1.0) - exp(-HDRColor * Exposure);
-  Mapped = pow(Mapped, vec3(1.0 / Gamma));
+
+  // Exposure tone mapping + Gamma Correction
+  //vec3 Mapped = vec3(1.0) - exp(-HDRColor * Exposure);
+  //Mapped = pow(Mapped, vec3(1.0 / Gamma));
 
   ResultingColor = vec4(Mapped, 1.0);
 }

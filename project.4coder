@@ -4,6 +4,7 @@ project_name = "Plague Engine";
 patterns = {
 "*.c",
 "*.cc",
+"*.gl",
 "*.h",
 "*.m",
 "*.mm",
@@ -16,7 +17,9 @@ blacklist_patterns = {
 ".*",
 };
 load_paths_custom = {
- {"."},
+ {"source"},
+ {"assets"},
+ {"tools"},
 };
 load_paths = {
 	{ load_paths_custom, .os="linux" },

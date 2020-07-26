@@ -88,4 +88,8 @@ Key(left, "Left")
 Key(up, "Up")
 Key(right, "Right")
 Key(down, "Down")
+Key(lbracket, "{")
+Key(bar, "|")
+Key(rbracket, "}")
+Key(tilde, "~")
 #undef Key

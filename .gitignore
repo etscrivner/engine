@@ -1,5 +1,8 @@
 build
 
+# Don't add fonts to repo
+assets/fonts
+
 *~
 \#*\#
 .\#*

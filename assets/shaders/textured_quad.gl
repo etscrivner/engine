@@ -1,0 +1,55 @@
+#ifdef VERTEX_SHADER
+layout (location = 0) in vec4 Source;
+layout (location = 1) in vec2 P0;
+layout (location = 2) in vec2 P1;
+layout (location = 3) in vec2 P2;
+layout (location = 4) in vec2 P3;
+layout (location = 5) in vec4 C0;
+layout (location = 6) in vec4 C1;
+layout (location = 7) in vec4 C2;
+layout (location = 8) in vec4 C3;
+
+uniform mat4 ViewProjection;
+
+out vec4 FragmentColor;
+out vec4 FragmentSource;
+out vec2 UV;
+
+void main() {
+  // NOTE: Vertices are a little wonky given our right-handed coordinate system.
+  // If they are ordered 0-3 we get the image flipped vertically.
+  vec2 Vertices[] = vec2[](P1, P0, P3, P2);
+  vec4 Colors[] = vec4[](C1, C0, C3, C2);
+	vec2 TexCoord[] = vec2[](vec2(0, 0), vec2(0, 1), vec2(1, 0), vec2(1, 1));
+
+  FragmentColor = Colors[gl_VertexID];
+  FragmentSource = Source;
+  UV = TexCoord[gl_VertexID];
+
+  vec4 WorldSpace = vec4(Vertices[gl_VertexID], 0.0, 1.0);
+  gl_Position = WorldSpace * ViewProjection;
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+in vec4 FragmentColor;
+in vec4 FragmentSource;
+in vec2 UV;
+
+uniform sampler2D Texture;
+uniform vec2 TextureDim;
+
+out vec4 ResultingColor;
+
+void main() {
+  vec2 UVOffset = FragmentSource.xy;
+  vec2 UVRange = FragmentSource.zw;
+    
+  vec2 SampleUV = (UVOffset + (UV * UVRange)) / TextureDim;
+  ResultingColor = texture(Texture, SampleUV);
+
+  // Handle pre-multiplied alpha
+  ResultingColor *= FragmentColor;
+  ResultingColor.xyz /= ResultingColor.a;
+}
+#endif

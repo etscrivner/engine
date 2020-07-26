@@ -7,11 +7,11 @@ typedef struct memory_arena {
   u8  *Base;
   umm Size;
   umm Used;
-
+  
   u32 ID;
   u32 NumChildren;
   u32 TempCount;
-
+  
   struct memory_arena *Parent;
 } memory_arena;
 
@@ -28,7 +28,7 @@ typedef struct temporary_arena {
 memory_arena ArenaInit(u8 *Memory, umm SizeBytes)
 {
   memory_arena Result = {};
-
+  
   Result.Base = (u8*)Memory;
   Result.Size = SizeBytes;
   Result.Used = 0;
@@ -36,7 +36,7 @@ memory_arena ArenaInit(u8 *Memory, umm SizeBytes)
   Result.ID = 0;
   Result.NumChildren = 0;
   Result.TempCount = 0;
-
+  
   return(Result);
 }
 
@@ -52,10 +52,10 @@ u8* ArenaAlloc(memory_arena *Arena, umm Size)
 {
   umm TotalSize = Arena->Used + Size;
   assert(TotalSize <= Arena->Size);
-
+  
   u8 *Result = Arena->Base + Arena->Used;
   Arena->Used += Size;
-
+  
   return(Result);
 }
 
@@ -80,16 +80,16 @@ void ArenaFree(memory_arena *Arena, umm Size)
 memory_arena ArenaPushChild(memory_arena *Parent, umm Size)
 {
   memory_arena Result = {};
-
+  
   Result.Base = ArenaAlloc(Parent, Size);
   Result.Size = Size;
   Result.Used = 0;
   Result.Parent = Parent;
   Result.ID = Parent->NumChildren;
   Result.NumChildren = 0;
-
+  
   Parent->NumChildren++;
-
+  
   return(Result);
 }
 
@@ -97,19 +97,19 @@ memory_arena ArenaPushChild(memory_arena *Parent, umm Size)
 void ArenaPopChild(memory_arena *Child)
 {
   memory_arena *Parent = Child->Parent;
-
+  
   assert(Parent);
   assert((Parent->NumChildren - 1) == Child->ID);
-
+  
   Parent->Used -= Child->Size;
-
+  
   // Zero out all used memory for later allocations
   ZeroMemory(Parent->Base + Parent->Used, Child->Used);
-
+  
   Child->Parent = NULL;
   Child->ID = 0;
   Child->Used = 0;
-
+  
   --Parent->NumChildren;
 }
 
@@ -119,24 +119,24 @@ void ArenaPopChild(memory_arena *Child)
 // BeginTemporaryArena begins a temporary workd arena in the given memory arena.
 temporary_arena BeginTemporaryArena(memory_arena *Arena) {
   temporary_arena Result = {};
-
+  
   Result.Arena = Arena;
   Result.SavedUsed = Arena->Used;
-
+  
   Arena->TempCount++;
-
+  
   return(Result);
 }
 
 // EndTemporaryArena removes a temporary arena restoring the space it used.
 void EndTemporaryArena(temporary_arena TempArena) {
   memory_arena* Arena = TempArena.Arena;
-
+  
   // Zero the memory used by the temporary arena
   ZeroMemory(Arena->Base + TempArena.SavedUsed, Arena->Used - TempArena.SavedUsed);
-
+  
   Arena->Used = TempArena.SavedUsed;
-
+  
   assert(Arena->TempCount > 0);
   --Arena->TempCount;
 }
@@ -146,23 +146,23 @@ void EndTemporaryArena(temporary_arena TempArena) {
 
 typedef struct scoped_arena {
   temporary_arena TempArena;
-
+  
   scoped_arena(memory_arena *Arena) {
     TempArena = BeginTemporaryArena(Arena);
   }
-
+  
   ~scoped_arena() {
     EndTemporaryArena(TempArena);
   }
 } scoped_arena;
 
-#define ScopedArenaPushArray(ScopedArena, Count, Type) ArenaPushArray(ScopedArena->TempArena.Arena, Count, Type)
+#define ScopedArenaPushArray(ScopedArena, Count, Type) ArenaPushArray((ScopedArena)->TempArena.Arena, Count, Type)
 
 internal char* ScopedArenaStrdup(scoped_arena *ScopedArena, const char *Value)
 {
   char* Data = ScopedArenaPushArray(ScopedArena, strlen(Value), char);
   strncpy(Data, Value, strlen(Value));
-
+  
   return(Data);
 }
 

@@ -1,0 +1,27 @@
+#ifdef VERTEX_SHADER
+layout (location = 0) in vec2 StartPos;
+layout (location = 1) in vec2 EndPos;
+layout (location = 2) in vec4 Color;
+
+out vec4 FragmentColor;
+
+uniform mat4 ViewProjection;
+
+void main() {
+  vec2 Vertices[] = vec2[](StartPos, EndPos);
+
+  vec4 WorldSpace = vec4(Vertices[gl_VertexID], 0.0, 1.0);
+  gl_Position = WorldSpace * ViewProjection;
+  FragmentColor = Color;
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+in vec4 FragmentColor;
+
+out vec4 ResultingColor;
+
+void main() {
+  ResultingColor = FragmentColor;
+}
+#endif
