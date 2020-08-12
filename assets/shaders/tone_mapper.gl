@@ -1,5 +1,5 @@
 #ifdef VERTEX_SHADER
-out vec2 UV;
+out vec2 frag_UV;
 
 void main() {
   vec4 Vertices[] = vec4[](
@@ -8,24 +8,23 @@ void main() {
     vec4(1, 0, 0, 1),
     vec4(1, 1, 0, 1)
   );
-  UV = Vertices[gl_VertexID].xy;
+  frag_UV = Vertices[gl_VertexID].xy;
   gl_Position = (Vertices[gl_VertexID] * 2 - 1);
 }
 #endif
 
 #ifdef FRAGMENT_SHADER
-in vec2 UV;
+in vec2 frag_UV;
 
-uniform sampler2D HDRBuffer;
+uniform sampler2D u_HDRBuffer;
 
-out vec4 ResultingColor;
+out vec4 out_Color;
 
 void main()
 {
   // TODO: Make Gamma and Exposure inputs to this shader
   const float Gamma = 1.0;
-  const float Exposure = 2.0;
-  vec3 HDRColor = texture(HDRBuffer, UV).rgb;
+  vec3 HDRColor = texture(u_HDRBuffer, frag_UV).rgb;
 
   // Plain ole gamma correction
   vec3 Mapped = pow(HDRColor, vec3(1.0 / Gamma));
@@ -34,9 +33,10 @@ void main()
   //vec3 Mapped = HDRColor / (HDRColor + vec3(1.0));
 
   // Exposure tone mapping + Gamma Correction
+  //const float Exposure = 2.0;
   //vec3 Mapped = vec3(1.0) - exp(-HDRColor * Exposure);
   //Mapped = pow(Mapped, vec3(1.0 / Gamma));
 
-  ResultingColor = vec4(Mapped, 1.0);
+  out_Color = vec4(Mapped, 1.0);
 }
 #endif

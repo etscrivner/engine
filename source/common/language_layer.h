@@ -173,6 +173,73 @@ internal i32 RandomI32Range(i32 Low, i32 High)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// stacks
+///////////////////////////////////////////////////////////////////////////////
+
+#define Stack(Type, Size) struct { i32 Index; Type Items[Size]; }
+
+#define StackPeek(Stack, Default) ((Stack).Index > 0) ? (Stack).Items[(Stack).Index - 1] : (Default)
+
+#define StackPush(Stack, Value) do {                                 \
+    Assert(Stack.Index < (i32)ArrayCount((Stack).Items));            \
+    (Stack).Items[(Stack).Index] = (Value);                          \
+    (Stack).Index++;                                                 \
+  } while(0)
+
+#define StackPop(Stack) do {                    \
+    Assert((Stack).Index > 0);                  \
+    (Stack).Index--;                            \
+  } while(0)
+
+///////////////////////////////////////////////////////////////////////////////
+// fnv-1a hash
+///////////////////////////////////////////////////////////////////////////////
+
+// 32-bit fnv-1a hash offset basis and prime
+#define FNV1A_HASH_INITIAL 2166136261
+#define FNV1A_HASH_PRIME 16777619
+
+// fnv-1a hashing algorithm.
+//
+// This algorithm was selected as it is fast, has few collisions, and maintains
+// a good pseudo-random distribution relative to other non-cryptographic
+// hashes.
+//
+// References:
+// https://softwareengineering.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed
+void Hash(u32* Hash, const u8* Data, u32 DataSizeBytes) {
+  const u8* Ptr = Data;
+  while (DataSizeBytes--) {
+    *Hash = (*Hash ^ *Ptr++) * FNV1A_HASH_PRIME;
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// djb2 hash
+///////////////////////////////////////////////////////////////////////////////
+
+internal u32 HashStringWithSeed(const char* Text, u32 Seed)
+{
+  // NOTE(eric): Uses the djb2 algorithm for hashing
+  u32 Hash = Seed;
+  i32 Ch;
+
+  char* Next = (char*)Text;
+  while ((Ch = *Next++))
+  {
+    Hash = ((Hash << 5) + Hash) + Ch;
+  }
+
+  return(Hash);
+}
+
+internal u32 HashString(const char* Text)
+{
+  // Uses the default djb2 seed
+  return HashStringWithSeed(Text, 5381);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // string_utf8
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -294,6 +361,46 @@ inline v2u V2U(u32 X, u32 Y) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// v2i
+///////////////////////////////////////////////////////////////////////////////
+
+typedef union v2i {
+  struct {
+    i32 X, Y;
+  };
+  struct {
+    i32 Width, Height;
+  };
+
+  i32 E[2];
+} v2i;
+
+inline v2i V2I(i32 X, i32 Y) {
+  v2i Result = { .X = X, .Y = Y };
+  return(Result);
+}
+
+inline v2i V2I(v2u V) {
+  return V2I(V.X, V.Y);
+}
+
+inline v2i operator - (v2i Left, v2i Right) {
+  v2i Result = V2I(Left.X - Right.X, Left.Y - Right.Y);
+  return(Result);
+}
+
+inline v2i operator + (v2i Left, v2i Right) {
+  v2i Result = V2I(Left.X + Right.X, Left.Y + Right.Y);
+  return(Result);
+}
+
+inline v2i operator += (v2i& Left, v2i Right) {
+  Left.X += Right.X;
+  Left.Y += Right.Y;
+  return(Left);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // v2
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -313,12 +420,27 @@ inline v2 V2(f32 X, f32 Y) {
   return(Result);
 }
 
+inline v2 V2(v2i V) {
+  v2 Result = V2(V.X, V.Y);
+  return(Result);
+}
+
+inline v2 V2(v2u V) {
+  v2 Result = V2(V.X, V.Y);
+  return(Result);
+}
+
 inline v2 V2(f32 Value) {
   return(V2(Value, Value));
 }
 
 inline v2 operator *(v2 Left, f32 Right) {
   v2 Result = {{Left.X*Right, Left.Y*Right}};
+  return(Result);
+}
+
+inline v2u operator * (v2u Left, v2 Right) {
+  v2u Result = V2U(Left.X * Right.X, Left.Y * Right.Y);
   return(Result);
 }
 
@@ -377,13 +499,23 @@ inline bool operator !=(v2 Left, v2 Right) {
   return (Left.X != Right.X || Left.Y != Right.Y);
 }
 
-inline v2 Floor(v2 Vec) {
+inline v2 FloorV2(v2 Vec) {
   v2 Result = V2(floor(Vec.X), floor(Vec.Y));
   return(Result);
 }
 
 inline v2 Clamp01(v2 Vec) {
   v2 Result = V2(Clamp01(Vec.X), Clamp01(Vec.Y));
+  return(Result);
+}
+
+inline v2 Round(v2 Value) {
+  v2 Result = V2(round(Value.X), round(Value.Y));
+  return(Result);
+}
+
+inline v2 Ceiling(v2 Value) {
+  v2 Result = V2(ceil(Value.X), ceil(Value.Y));
   return(Result);
 }
 
@@ -660,6 +792,21 @@ inline v4 operator -(v4 Left, v4 Right) {
   return(Result);
 }
 
+inline v4 Round(v4 Vec) {
+  v4 Result = V4(Round(Vec.X), Round(Vec.Y), Round(Vec.Z), Round(Vec.W));
+  return(Result);
+}
+
+inline v4 Ceiling(v4 Vec) {
+  v4 Result = V4(ceil(Vec.X), ceil(Vec.Y), ceil(Vec.Z), ceil(Vec.W));
+  return(Result);
+}
+
+inline v4 FloorV4(v4 Vec) {
+  v4 Result = V4(floor(Vec.X), floor(Vec.Y), floor(Vec.Z), floor(Vec.W));
+  return(Result);
+}
+
 inline v4 Lerp(v4 Start, v4 End, f32 Weight) {
   v4 Result = (1.0f - Weight)*Start + Weight*End;
   return(Result);
@@ -912,6 +1059,43 @@ inline v3 HSVToRGB(v3 HSV)
   
   Result += V3(M, M, M);
   return(Result);
+}
+
+// Maps a point from one resolution to another
+inline v2 MapPointToResolution(v2 Point, v2 FromResolution, v2 ToResolution)
+{
+  v2 ClipSpacePoint = V2(
+    Point.X / FromResolution.Width,
+    Point.Y / FromResolution.Height
+  );
+  v2 Result = V2(
+    ClipSpacePoint.X * ToResolution.Width,
+    ClipSpacePoint.Y * ToResolution.Height
+  );
+  return FloorV2(Result);
+}
+
+// Maps a rectangle from one resolution to another
+inline v4 MapRectToResolution(v4 Rect, v2 FromResolution, v2 ToResolution)
+{
+  v4 ClipSpaceRect = V4(
+    Rect.X / FromResolution.Width,
+    Rect.Y / FromResolution.Height,
+    Rect.Width / FromResolution.Width,
+    Rect.Height / FromResolution.Height
+  );
+  v4 Result = V4(
+    ClipSpaceRect.X * ToResolution.Width,
+    ClipSpaceRect.Y * ToResolution.Height,
+    ClipSpaceRect.Width * ToResolution.Width,
+    ClipSpaceRect.Height * ToResolution.Height
+  );
+  // Because we're using a coordinate system with (0, 0) at the lower left-hand
+  // corner we need to floor the coordinates to avoid and over-small start
+  // position while taking the ceiling of the width and height values to ensure
+  // that we always have sufficient space for the rectangle even if we end up
+  // using slightly more screen real-estate.
+  return V4(round(Result.X), round(Result.Y), ceil(Result.Width), ceil(Result.Height));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1393,6 +1577,36 @@ internal b32 CircleCircleIntersect(circle Left, circle Right)
 }
 
 internal b32 RectPointIntersect(v4 Rect, v2 Point)
+{
+  b32 Result = true;
+  
+  if (Point.X < Rect.X ||
+      Point.X > Rect.X + Rect.Z ||
+      Point.Y < Rect.Y ||
+      Point.Y > Rect.Y + Rect.W)
+  {
+    Result = false;
+  }
+  
+  return(Result);
+}
+
+internal b32 RectPointIntersect(v4 Rect, v2u Point)
+{
+  b32 Result = true;
+  
+  if (Point.X < Rect.X ||
+      Point.X > Rect.X + Rect.Z ||
+      Point.Y < Rect.Y ||
+      Point.Y > Rect.Y + Rect.W)
+  {
+    Result = false;
+  }
+  
+  return(Result);
+}
+
+internal b32 RectPointIntersect(v4 Rect, v2i Point)
 {
   b32 Result = true;
   

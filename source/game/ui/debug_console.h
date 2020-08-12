@@ -4,6 +4,8 @@
 #define DEBUG_CONSOLE_MAX_LINES 128
 #define DEBUG_CONSOLE_MAX_LINE_LENGTH 128
 
+typedef struct app_context app_context;
+
 typedef enum console_mode {
   CONSOLE_MODE_unloaded,
   CONSOLE_MODE_loading,
@@ -11,37 +13,56 @@ typedef enum console_mode {
   CONSOLE_MODE_unloading
 } console_mode;
 
-typedef struct scrollbar {
-  f32 Width;
-  f32 Height;
-} scrollbar;
+enum {
+  CONSOLE_COLOR_scrollbar_bg,
+  CONSOLE_COLOR_scrollbar_thumb,
+  CONSOLE_COLOR_MAX
+};
+
+typedef struct console_style {
+  f32 ThumbPadding;
+  v4 Colors[CONSOLE_COLOR_MAX];
+} console_style;
 
 typedef struct console {
   font *Font;
+  memory_arena *TransientArena;
+
+  b32 KeyboardInputConsumed;
+  b32 MouseInputConsumed;
+  b32 TextInputConsumed;
+
   console_mode Mode;
-  f32 TimePassed;
+  u64 TimePassedMicros;
+  console_style Style;
   
   u32 CursorPos;
   
   u32 SelectionStart;
   u32 SelectionEnd;
 
+  v4 ScrollBarRect;
+  v4 ThumbRect;
+  f32 TextHeight;
+  f32 YOffset; // Y-offset of console when dropping down
+
   b32 ThumbFocus;
-  f32 YScrollOffset;
-  v2 Mouse;
-  v2 MouseDelta;
+  f32 YScrollOffset; // Offset of scrollable area
+  v2i Mouse;
+  v2i MouseDelta;
+  v2u RenderDim;
+  v2u WindowDim;
 
   u32 LogLineCount;
   char Log[DEBUG_CONSOLE_MAX_LINES][DEBUG_CONSOLE_MAX_LINE_LENGTH];
   char Input[DEBUG_CONSOLE_MAX_LINE_LENGTH];
 } console;
 
-internal void ConsoleCreate(console *Console, font *Font);
-// Is the console currently being display and actively processing input?
+internal void ConsoleCreate(console *Console, font *Font, memory_arena *TransientArena);
+// Is the console currently being displayed and actively processing input?
 internal b32 ConsoleIsActive(console *Console);
 internal void ConsoleLog(console *Console, const char *Text);
-internal void ConsoleUpdate(console *Console, platform_state *Platform, f32 DeltaTimeSecs);
-
-internal void ConsoleInputMouse(console *Console, v2 MousePos);
+internal void ConsoleUpdate(console *Console, app_context Ctx, u64 DeltaTimeMicros);
+internal void ConsoleRender(console *Console, renderer *Renderer);
 
 #endif //DEBUG_CONSOLE_H

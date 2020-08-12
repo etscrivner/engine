@@ -42,7 +42,9 @@ typedef struct load_texture_work {
 void LoadTextureCallback(work_queue *Queue, void *Data)
 {
   load_texture_work *Work = (load_texture_work*)Data;
-  
+
+  // TODO: @Feature: Replace this with a look into an asset packfile or
+  // similar.
   if (strncmp(Work->ReferenceName, "monk_idle", TEXTURE_CATALOG_REFERENCE_NAME_MAX_SIZE) == 0)
   {
     TextureCatalogAdd(Work->TextureCatalog, "../assets/textures/MonkIdle.png", "monk_idle");
@@ -51,6 +53,11 @@ void LoadTextureCallback(work_queue *Queue, void *Data)
   else if (strncmp(Work->ReferenceName, "guy_idle", TEXTURE_CATALOG_REFERENCE_NAME_MAX_SIZE) == 0)
   {
     TextureCatalogAdd(Work->TextureCatalog, "../assets/textures/GuyIdle.png", "guy_idle");
+  }
+
+  else if (strncmp(Work->ReferenceName, "ui_icons", TEXTURE_CATALOG_REFERENCE_NAME_MAX_SIZE) == 0)
+  {
+    TextureCatalogAdd(Work->TextureCatalog, "../assets/textures/WindowIcons.png", "ui_icons");
   }
   
   // NOTE: To avoid texture corruption and other problems related to a
@@ -65,7 +72,6 @@ void LoadTextureCallback(work_queue *Queue, void *Data)
 internal b32 TextureCatalogInit(texture_catalog *Catalog)
 {
   Catalog->NumEntries = 0;
-  Catalog->AllowAsync = false;
   return WatchedFileSetCreate(&Catalog->Watcher);
 }
 
@@ -80,6 +86,19 @@ internal void TextureCatalogDestroy(texture_catalog *Catalog)
 internal b32 TextureCatalogAdd(texture_catalog *Catalog, char *TextureFile, char *ReferenceName)
 {
   b32 Result = true;
+
+  // TODO: Use a mutex here....
+
+  // Verify that a texture with this reference name has not already been
+  // loaded. This prevents the same texture being reloaded multiple times when
+  // retrieved in rapid succession and multiple workers go to load it.
+  foreach (I, Catalog->NumEntries)
+  {
+    if (strncmp(Catalog->Entry[I].ReferenceName, ReferenceName, TEXTURE_CATALOG_REFERENCE_NAME_MAX_SIZE) == 0)
+    {
+      return(true);
+    }
+  }
   
   i32 Width, Height, Channels;
   u8 *ImageData = stbi_load(TextureFile, &Width, &Height, &Channels, STBI_rgb_alpha);
@@ -130,7 +149,7 @@ internal texture TextureCatalogGet(texture_catalog *Catalog, platform_state *Pla
     }
   }
   
-  if (!Result.Loaded && Catalog->AllowAsync)
+  if (!Result.Loaded)
   {
     load_texture_work *Work = (load_texture_work*)calloc(1, sizeof(load_texture_work));
     Work->TextureCatalog = Catalog;

@@ -227,7 +227,7 @@ internal b32 LinuxAudioCreate(linux_audio *Audio, i32 LatencyMS, u32 SamplesPerS
   // preventing audio underruns. This was tuned by hand to produce good audio
   // with low latency at 60 FPS, may not port to different machines or
   // framerates.
-  u32 MaxBufferedPeriods = Audio->BufferSize >> 3;
+  u32 MaxBufferedPeriods = Audio->BufferSize >> 2;
   CircularAudioBufferCreate(&Audio->CircularBuffer, MaxBufferedPeriods * Audio->PeriodSize * Audio->Channels);
 
   // Start audio thread
@@ -347,7 +347,7 @@ internal i32 LinuxAudioThreadLoop(void *UserData)
         // NOTE: I'm not sure of the benefits and trade-offs of each. Different
         // examples do things differently, but recover seems to work better in
         // the case of an underrun.
-#if 0
+#if 1
         snd_pcm_prepare(Audio->Handle);
 #else
         Wrote = snd_pcm_recover(Audio->Handle, Wrote, 0);

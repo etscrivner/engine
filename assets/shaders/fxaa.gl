@@ -6,7 +6,7 @@ out vec2 v_rgbSE;
 out vec2 v_rgbM;
 out vec2 frag_uv;
 
-uniform vec2 TexResolution;
+uniform vec2 u_TexResolution;
 
 void GetTexCoords(vec2 fragCoord, vec2 resolution,
                   out vec2 v_rgbNW, out vec2 v_rgbNE,
@@ -23,14 +23,14 @@ void GetTexCoords(vec2 fragCoord, vec2 resolution,
 
 void main()
 {
-    vec4 Vertices[] = vec4[](vec4(0, 0, 0, 1),
-                             vec4(0, 1, 0, 1),
-                             vec4(1, 0, 0, 1),
-                             vec4(1, 1, 0, 1));
-    frag_uv = Vertices[gl_VertexID].xy;
-    vec2 fragCoord = frag_uv * TexResolution;
-    GetTexCoords(fragCoord, TexResolution, v_rgbNW, v_rgbNE, v_rgbSW, v_rgbSE, v_rgbM);
-    gl_Position = (Vertices[gl_VertexID] * 2 - 1);
+        vec4 Vertices[] = vec4[](vec4(0, 0, 0, 1),
+                                 vec4(0, 1, 0, 1),
+                                 vec4(1, 0, 0, 1),
+                                 vec4(1, 1, 0, 1));
+        frag_uv = Vertices[gl_VertexID].xy;
+        vec2 fragCoord = frag_uv * u_TexResolution;
+        GetTexCoords(fragCoord, u_TexResolution, v_rgbNW, v_rgbNE, v_rgbSW, v_rgbSE, v_rgbM);
+        gl_Position = (Vertices[gl_VertexID] * 2 - 1);
 }
 #endif
 
@@ -44,8 +44,8 @@ in vec2 frag_uv;
 
 out vec4 color;
 
-uniform vec2 TexResolution;
-uniform sampler2D Texture;
+uniform vec2 u_TexResolution;
+uniform sampler2D u_Texture;
 
 #define FXAA_REDUCE_MIN (1.0 / 128.0)
 #define FXAA_REDUCE_MUL (1.0 / 8.0)
@@ -56,53 +56,53 @@ FXAA(sampler2D tex, vec2 frag_coord, vec2 resolution,
      vec2 v_rgb_nw, vec2 v_rgb_ne, vec2 v_rgb_sw, vec2 v_rgb_se,
      vec2 v_rgbM)
 {
-    vec4 color;
-    mediump vec2 inverseVP = vec2(1.0 / resolution.x, 1.0 / resolution.y);
-    vec3 rgb_nw = texture(tex, v_rgb_nw).xyz;
-    vec3 rgb_ne = texture(tex, v_rgb_ne).xyz;
-    vec3 rgb_sw = texture(tex, v_rgb_sw).xyz;
-    vec3 rgb_se = texture(tex, v_rgb_se).xyz;
-    vec4 texColor = texture(tex, v_rgbM);
-    vec3 rgbM  = texColor.xyz;
-    vec3 luma = vec3(0.299, 0.587, 0.114);
-    float lumaNW = dot(rgb_nw, luma);
-    float lumaNE = dot(rgb_ne, luma);
-    float lumaSW = dot(rgb_sw, luma);
-    float lumaSE = dot(rgb_se, luma);
-    float lumaM  = dot(rgbM,  luma);
-    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
-    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+        vec4 color;
+        mediump vec2 inverseVP = vec2(1.0 / resolution.x, 1.0 / resolution.y);
+        vec3 rgb_nw = texture(tex, v_rgb_nw).xyz;
+        vec3 rgb_ne = texture(tex, v_rgb_ne).xyz;
+        vec3 rgb_sw = texture(tex, v_rgb_sw).xyz;
+        vec3 rgb_se = texture(tex, v_rgb_se).xyz;
+        vec4 texColor = texture(tex, v_rgbM);
+        vec3 rgbM  = texColor.xyz;
+        vec3 luma = vec3(0.299, 0.587, 0.114);
+        float lumaNW = dot(rgb_nw, luma);
+        float lumaNE = dot(rgb_ne, luma);
+        float lumaSW = dot(rgb_sw, luma);
+        float lumaSE = dot(rgb_se, luma);
+        float lumaM  = dot(rgbM,  luma);
+        float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+        float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
     
-    mediump vec2 dir;
-    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
-    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+        mediump vec2 dir;
+        dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+        dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
     
-    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) *
-                          (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);
+        float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) *
+                              (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);
     
-    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
-    dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX),
-              max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),
-                  dir * rcpDirMin)) * inverseVP;
+        float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+        dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX),
+                  max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),
+                      dir * rcpDirMin)) * inverseVP;
     
-    vec3 rgbA = 0.5 * (
-        texture(tex, frag_coord * inverseVP + dir * (1.0 / 3.0 - 0.5)).xyz +
-        texture(tex, frag_coord * inverseVP + dir * (2.0 / 3.0 - 0.5)).xyz);
-    vec3 rgbB = rgbA * 0.5 + 0.25 * (
-        texture(tex, frag_coord * inverseVP + dir * -0.5).xyz +
-        texture(tex, frag_coord * inverseVP + dir * 0.5).xyz);
+        vec3 rgbA = 0.5 * (
+                texture(tex, frag_coord * inverseVP + dir * (1.0 / 3.0 - 0.5)).xyz +
+                texture(tex, frag_coord * inverseVP + dir * (2.0 / 3.0 - 0.5)).xyz);
+        vec3 rgbB = rgbA * 0.5 + 0.25 * (
+                texture(tex, frag_coord * inverseVP + dir * -0.5).xyz +
+                texture(tex, frag_coord * inverseVP + dir * 0.5).xyz);
     
-    float lumaB = dot(rgbB, luma);
-    if ((lumaB < lumaMin) || (lumaB > lumaMax))
-        color = vec4(rgbA, texColor.a);
-    else
-        color = vec4(rgbB, texColor.a);
-    return color;
+        float lumaB = dot(rgbB, luma);
+        if ((lumaB < lumaMin) || (lumaB > lumaMax))
+                color = vec4(rgbA, texColor.a);
+        else
+                color = vec4(rgbB, texColor.a);
+        return color;
 }
 
 void main()
 {
-    vec2 fragCoord = frag_uv * TexResolution; 
-    color = FXAA(Texture, fragCoord, TexResolution, v_rgbNW, v_rgbNE, v_rgbSW, v_rgbSE, v_rgbM);
+        vec2 fragCoord = frag_uv * u_TexResolution; 
+        color = FXAA(u_Texture, fragCoord, u_TexResolution, v_rgbNW, v_rgbNE, v_rgbSW, v_rgbSE, v_rgbM);
 }
 #endif

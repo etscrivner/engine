@@ -29,8 +29,8 @@ internal void OpenGLInit(platform_state *Platform, const char *ExtensionList);
 internal framebuffer FramebufferCreate(u32 Width, u32 Height)
 {
   framebuffer Result = {
-    .Width  = Width,
-    .Height = Height,
+    .Width  = Max(1, Width),
+    .Height = Max(1, Height),
   };
   
   glGenFramebuffers(1, &Result.FBO);
@@ -69,16 +69,16 @@ internal b32 FramebufferIsValid(framebuffer *Framebuffer)
   return(Result);
 }
 
-internal void FramebufferMaybeResize(framebuffer *Framebuffer, v2 RenderDim)
+internal void FramebufferMaybeResize(framebuffer *Framebuffer, v2u RenderDim)
 {
   // Sanity check, as sometimes RenderDim is (0, 0) during early life-cycle
-  if (RenderDim.Width <= 1 || RenderDim.Height < 1)
+  if (RenderDim.Width < 1 || RenderDim.Height < 1)
   {
     return;
   }
 
   // Resize the framebuffer if the render dimensions changed
-  if (RenderDim.Width != (f32)Framebuffer->Width || RenderDim.Height != (f32)Framebuffer->Height)
+  if (RenderDim.Width != Framebuffer->Width || RenderDim.Height != Framebuffer->Height)
   {
     framebuffer_texture_format OldFormat = Framebuffer->TextureAttachmentFormat;
     
@@ -271,13 +271,15 @@ internal void RendererCreate(platform_state *Platform, renderer *Renderer, shade
       IndexedRenderBufferSetAttrib(&Renderer->TexturedQuadBuffer, 7, 4, sizeof(v4)+4*sizeof(v2)+2*sizeof(v4)); // C2 (r, g, b, a)
       IndexedRenderBufferSetAttrib(&Renderer->TexturedQuadBuffer, 8, 4, sizeof(v4)+4*sizeof(v2)+3*sizeof(v4)); // C3 (r, g, b, a)
     }
-    
-    // Text
+
+    // Packed Text
     {
       Renderer->TextBuffer = IndexedRenderBufferCreate(RENDERER_TEXTS_MAX, RENDERER_BYTES_PER_TEXT, Renderer->TextInstanceData);
-      
-      IndexedRenderBufferSetAttrib(&Renderer->TextBuffer, 0, 4, 0); // vec4 = <vec2 Pos, vec2 UV>
-      IndexedRenderBufferSetAttrib(&Renderer->TextBuffer, 1, 4, sizeof(v4)); // TextColor (r,g,b,a)
+
+
+      IndexedRenderBufferSetAttrib(&Renderer->TextBuffer, 0, 4, 0); // vec4 = <Dest x,y,w,h>
+      IndexedRenderBufferSetAttrib(&Renderer->TextBuffer, 1, 4, sizeof(v4)); // vec4 = <Source x,y,w,h>
+      IndexedRenderBufferSetAttrib(&Renderer->TextBuffer, 2, 4, 2*sizeof(v4)); // TextColor (r,g,b,a)
     }
   }
   
@@ -298,7 +300,7 @@ internal void RendererDestroy(renderer *Renderer)
   }
 }
 
-internal void RendererBeginFrame(renderer *Renderer, platform_state* Platform, v2 Dim)
+internal void RendererBeginFrame(renderer *Renderer, platform_state* Platform, v2u Dim)
 {
   // NOTE(eric): On library hot reload, the OpenGL function pointers
   // dynamically loaded from the library will be invalid. Reload them here.
@@ -368,7 +370,7 @@ internal void RendererFlush(renderer* Renderer)
         u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "line");
         glBindVertexArray(Renderer->LineBuffer.VAO);
         {
-          glUniformMatrix4fv(glGetUniformLocation(Shader, "ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
+          glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
           
           GLint First = 0;
           GLsizei Count = 2;
@@ -394,7 +396,7 @@ internal void RendererFlush(renderer* Renderer)
         u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "filled_rect");
         glBindVertexArray(Renderer->FilledRectBuffer.VAO);
         {
-          glUniformMatrix4fv(glGetUniformLocation(Shader, "ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
+          glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
           
           GLint First = 0;
           GLsizei Count = 4;
@@ -417,7 +419,7 @@ internal void RendererFlush(renderer* Renderer)
         u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "filled_circle");
         glBindVertexArray(Renderer->FilledCircleBuffer.VAO);
         {
-          glUniformMatrix4fv(glGetUniformLocation(Shader, "ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
+          glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
           
           GLint First = 0;
           GLsizei Count = 4;
@@ -437,23 +439,22 @@ internal void RendererFlush(renderer* Renderer)
           glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
         
-        
         u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "textured_quad");
         glBindVertexArray(Renderer->TexturedQuadBuffer.VAO);
         {
-          glUniformMatrix4fv(glGetUniformLocation(Shader, "ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
+          glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
           
           
           glActiveTexture(GL_TEXTURE0 + Request->TexturedQuad.TextureID);
           glBindTexture(GL_TEXTURE_2D, Request->TexturedQuad.TextureID);
           // NOTE: For now, use GL_NEAREST to get a nice fat-pixel effect when scaling up.
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
           
-          glUniform1i(glGetUniformLocation(Shader, "Texture"), Request->TexturedQuad.TextureID);
-          glUniform2f(glGetUniformLocation(Shader, "TextureDim"), Request->TexturedQuad.Dim.Width, Request->TexturedQuad.Dim.Height);
+          glUniform1i(glGetUniformLocation(Shader, "u_Texture"), Request->TexturedQuad.TextureID);
+          glUniform2f(glGetUniformLocation(Shader, "u_TextureDim"), Request->TexturedQuad.Dim.Width, Request->TexturedQuad.Dim.Height);
           
           GLint First = 0;
           GLsizei Count = 4;
@@ -477,7 +478,7 @@ internal void RendererFlush(renderer* Renderer)
         u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "bitmap_font");
         glBindVertexArray(Renderer->TextBuffer.VAO);
         {
-          glUniformMatrix4fv(glGetUniformLocation(Shader, "ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
+          glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
           
           glActiveTexture(GL_TEXTURE0 + Request->Text.TextureID);
           glBindTexture(GL_TEXTURE_2D, Request->Text.TextureID);
@@ -486,7 +487,8 @@ internal void RendererFlush(renderer* Renderer)
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
           
-          glUniform1i(glGetUniformLocation(Shader, "Texture"), Request->Text.TextureID);
+          glUniform1i(glGetUniformLocation(Shader, "u_Texture"), Request->Text.TextureID);
+          glUniform2fv(glGetUniformLocation(Shader, "u_TextureDim"), 1, Request->Text.PackedTextureDim.E);
           
           GLint First = 0;
           GLsizei Count = 4;
@@ -616,7 +618,7 @@ internal void RendererPushLine(renderer *Renderer, u32 Flags, v2 Start, v2 End, 
   Renderer->LineInstanceDataPos += RENDERER_BYTES_PER_LINE;
 }
 
-internal void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color)
+internal inline void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color)
 {
   Assert(Renderer->FilledRectInstanceDataPos + RENDERER_BYTES_PER_FILLED_RECT <= sizeof(Renderer->FilledRectInstanceData));
   render_request_type RequestType = RENDER_REQUEST_filled_rect;
@@ -698,7 +700,7 @@ internal void RendererPushFilledCircle(renderer *Renderer, u32 Flags, v2 Center,
   Renderer->FilledCircleInstanceDataPos += RENDERER_BYTES_PER_FILLED_CIRCLE;
 }
 
-internal void RendererPushTexturedQuad(renderer *Renderer, u32 Flags, GLuint TextureID, v2 TextureDim, v4 SourceRect, v4 DestRect, v4 Color)
+internal inline void RendererPushTexturedQuad(renderer *Renderer, u32 Flags, GLuint TextureID, v2 TextureDim, v4 SourceRect, v4 DestRect, v4 Color)
 {
   Assert(Renderer->TexturedQuadInstanceDataPos + RENDERER_BYTES_PER_TEXTURED_QUAD <= sizeof(Renderer->TexturedQuadInstanceData));
   render_request_type RequestType = RENDER_REQUEST_textured_quad;
@@ -764,7 +766,8 @@ internal void RendererPushTexture(renderer *Renderer, u32 Flags, texture Texture
   }
 }
 
-internal void RendererPushTextChar(renderer *Renderer, u32 Flags, GLuint TextureID, v2 Pos, v2 Dim, v4 Color) {
+internal void RendererPushTextChar(renderer *Renderer, u32 Flags, GLuint TextureID, v2 PackedTextureDim, v4 Dest, v4 Source, v4 Color)
+{
   Assert(Renderer->TextInstanceDataPos + RENDERER_BYTES_PER_TEXT <= sizeof(Renderer->TextInstanceData));
   render_request_type RequestType = RENDER_REQUEST_text;
   
@@ -778,6 +781,7 @@ internal void RendererPushTextChar(renderer *Renderer, u32 Flags, GLuint Texture
     Renderer->ActiveRequest.DataOffset = Renderer->TextInstanceDataPos;
     Renderer->ActiveRequest.DataSize = RENDERER_BYTES_PER_TEXT;
     Renderer->ActiveRequest.Text.TextureID = TextureID;
+    Renderer->ActiveRequest.Text.PackedTextureDim = PackedTextureDim;
   }
   else
   {
@@ -785,14 +789,18 @@ internal void RendererPushTextChar(renderer *Renderer, u32 Flags, GLuint Texture
   }
   
   f32 *Data = (f32*)(Renderer->TextInstanceData + Renderer->TextInstanceDataPos);
-  Data[0] = Pos.X;
-  Data[1] = Pos.Y;
-  Data[2] = Dim.Width;
-  Data[3] = Dim.Height;
-  Data[4] = Color.R;
-  Data[5] = Color.G;
-  Data[6] = Color.B;
-  Data[7] = Color.A;
+  Data[0] = Dest.X;
+  Data[1] = Dest.Y;
+  Data[2] = Dest.Width;
+  Data[3] = Dest.Height;
+  Data[4] = Source.X;
+  Data[5] = Source.Y;
+  Data[6] = Source.Width;
+  Data[7] = Source.Height;
+  Data[8] = Color.R;
+  Data[9] = Color.G;
+  Data[10] = Color.B;
+  Data[11] = Color.A;
   Renderer->TextInstanceDataPos += RENDERER_BYTES_PER_TEXT;
 }
 
@@ -824,12 +832,15 @@ internal void RendererPushText(renderer *Renderer, u32 Flags, font *Font, const 
       XPos += (Delta.x >> 6);
     }
 
-    RendererPushTextChar(Renderer,
-                         Flags,
-                         Font->GlyphTextures[(u32)*NextCh],
-                         V2(XPos, YPos),
-                         V2(Width, Height),
-                         Color);
+    RendererPushTextChar(
+      Renderer,
+      Flags,
+      Font->Texture,
+      Font->TextureDim,
+      V4(XPos, YPos, Width, Height),
+      V4(Cached->Source.X, Cached->Source.Y, Cached->Dim.Width, Cached->Dim.Height),
+      Color
+    );
 
     if (*NextCh == '\t') {
       NextPos.X += (Cached->Advance >> 6) * 4;
@@ -901,7 +912,7 @@ internal void RendererPopMVPMatrix(renderer *Renderer)
   Renderer->Request[Renderer->NumRequests++] = MVPRequest;
 }
 
-internal void Renderer2DRightHanded(renderer *Renderer, v2 Dim)
+internal void Renderer2DRightHanded(renderer *Renderer, v2u Dim)
 {
   RendererPushMVPMatrix(
     Renderer,

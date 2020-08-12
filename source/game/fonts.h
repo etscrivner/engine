@@ -4,6 +4,7 @@
 typedef struct font_glyph_cache {
   u8 Char;
   v2 Dim;
+  v2 Source;
   v2 Bearing;
   u32 Advance;
   b32 Loaded;
@@ -13,12 +14,10 @@ typedef struct font {
   const char *FontFile;
   u32 FontSizePixels;
   FT_Face Face;
-  // TODO: Cache the glyphs in numerous separate textures is _REALLY_ inefficient.
-  // We should move this to a packed tiling scheme where these are all loaded 
-  // into a single texture.
-  GLuint GlyphTextures[128];
+  GLuint Texture;
+  v2 TextureDim;
   font_glyph_cache GlyphCache[128];
-} font;
+} packed_font;
 
 typedef struct font_manager {
   FT_Library FreeType;
@@ -27,7 +26,13 @@ typedef struct font_manager {
 
 internal b32 FontManagerInit(font_manager *FontManager, const char *FontDirectory);
 internal void FontManagerDestroy(font_manager *FontManager);
-internal b32 FontManagerLoadFont(font_manager *FontManager, font *Font, const char *FontFile, u32 FontSizePixels);
+internal b32 FontManagerLoadFont(
+  font_manager *FontManager,
+  font *Font,
+  const char *FontFile,
+  u32 FontSizePixels,
+  memory_arena *TransientArena
+);
 internal void FontManagerDestroyFont(font_manager *FontManager, font *Font);
 
 internal f32 FontTextWidthPixels(font *Font, const char *Text);
@@ -36,6 +41,8 @@ internal f32 FontTextPrefixWidthPixels(font *Font, const char *Text, u32 Length)
 internal f32 FontTextHeightPixels(font *Font);
 internal f32 FontAscenderPixels(font *Font);
 internal f32 FontDescenderPixels(font *Font);
+internal f32 FontBaselinePixels(font *Font);
+internal f32 FontCenterOffset(font *Font, f32 Height);
 
 // Converts an X-Offset in pixels to the character at that offset in the given
 // text string. Returns -1 if the offset is out of range.

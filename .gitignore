@@ -6,3 +6,5 @@ assets/fonts
 *~
 \#*\#
 .\#*
+.clangd
+third-party

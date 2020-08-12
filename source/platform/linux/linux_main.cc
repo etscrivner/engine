@@ -177,6 +177,26 @@ void GameLibraryClose(game_library *Game)
 #define LINUX_MONOTONIC_CLOCK CLOCK_MONOTONIC
 #endif
 
+internal u64 LinuxGetTimeMicros(void)
+{
+  struct timespec TimeSpec;
+  u64 Result = 0;
+  
+  if (clock_gettime(LINUX_MONOTONIC_CLOCK, &TimeSpec) == 0)
+  {
+    u64 SecsInMicros = TimeSpec.tv_sec * 1000000.0f; // Converts seconds to microseconds
+    u64 NsInMicros = TimeSpec.tv_nsec / 1000;
+    Result = SecsInMicros + NsInMicros;
+  }
+  else
+  {
+    fprintf(stderr, "Linux error: Failed to get time: %s\n", strerror(errno));
+    Result = 0.0f;
+  }
+  
+  return(Result);
+}
+
 internal u64 LinuxGetTimeMs(void)
 {
   struct timespec TimeSpec;
@@ -271,12 +291,12 @@ internal void LinuxLog(const char *Format, ...)
 Assert(ExtensionInList(GLXExtensionList, #ExtName));          \
 GLXLoadExtension(Type, ProcName)
 
-#define GLXProc(Type, Name) PFNGLX##Type##PROC glX##Name;
+#define GLXProc(Type, Name) PFNGLX##Type##PROC glX##Name = NULL;
 
 // glX procs we care about
+GLXProc(SWAPINTERVALMESA, SwapIntervalMESA)
 GLXProc(SWAPINTERVALEXT, SwapIntervalEXT)
 GLXProc(CREATECONTEXTATTRIBSARB, CreateContextAttribsARB)
-
 ///////////////////////////////////////////////////////////////////////////////
 
 static Atom NetWMIconAtom = None;
@@ -386,14 +406,14 @@ internal b32 X11SetWindowIconPNG(const char *PNGFile, Display *CurrentDisplay, W
   return(Result);
 }
 
-internal v2 X11GetDrawableAreaSize(Display *CurrentDisplay, Window CurrentWindow)
+internal v2u X11GetDrawableAreaSize(Display *CurrentDisplay, Window CurrentWindow)
 {
   i32 XPos, YPos;
   u32 Width, Height, BorderWidth, Depth;
   Window RootWnd;
   XGetGeometry(CurrentDisplay, CurrentWindow, &RootWnd, &XPos, &YPos, &Width, &Height, &BorderWidth, &Depth);
   
-  return(V2(Width, Height));
+  return(V2U(Width, Height));
 }
 
 internal void X11ToggleAllowResizing(b32 AllowResizing)
@@ -450,7 +470,7 @@ internal b32 X11PumpEvents(platform_state *Platform)
         // NOTE: Window dimensions will be different from the drawable area 
         // size. The drawable area size is the units that that mouse position 
         // is actually reported in.
-        Platform->Input.WindowDim = V2(EventWindowAttrs.width, EventWindowAttrs.height);
+        Platform->Input.WindowDim = V2U(EventWindowAttrs.width, EventWindowAttrs.height);
         Platform->Input.RenderDim = X11GetDrawableAreaSize(GlobalDisplay, GlobalWindow);
         
         // Fetch initial mouse position on window exposure so we
@@ -466,22 +486,28 @@ internal b32 X11PumpEvents(platform_state *Platform)
                       &XPos, &YPos,
                       &ButtonMasks);
         
-        Platform->Input.Mouse.Pos = V2(XPos, Platform->Input.RenderDim.Height - YPos);
-        Platform->Input.Mouse.Pos01 = Clamp01(Platform->Input.Mouse.Pos / Platform->Input.RenderDim);
+        Platform->Input.Mouse.Pos = V2I(XPos, Platform->Input.RenderDim.Height - YPos);
+        Platform->Input.Mouse.Pos01 = V2(
+          Clamp01((f32)Platform->Input.Mouse.Pos.X / (f32)Platform->Input.RenderDim.Width),
+          Clamp01((f32)Platform->Input.Mouse.Pos.Y / (f32)Platform->Input.RenderDim.Height)
+        );
       }
       break;
       case ResizeRequest:
       {
         XGetWindowAttributes(GlobalDisplay, GlobalWindow, &EventWindowAttrs);
-        Platform->Input.WindowDim = V2(EventWindowAttrs.width, EventWindowAttrs.height);
+        Platform->Input.WindowDim = V2U(EventWindowAttrs.width, EventWindowAttrs.height);
         Platform->Input.RenderDim = X11GetDrawableAreaSize(GlobalDisplay, GlobalWindow);
         glViewport(0, 0, Platform->Input.RenderDim.Width, Platform->Input.RenderDim.Height);
       }
       break;
       case MotionNotify:
       {
-        Platform->Input.Mouse.Pos = V2(Event.xmotion.x, Platform->Input.RenderDim.Height - Event.xmotion.y);
-        Platform->Input.Mouse.Pos01 = Platform->Input.Mouse.Pos / Platform->Input.RenderDim;
+        Platform->Input.Mouse.Pos = V2I(Event.xmotion.x, Platform->Input.RenderDim.Height - Event.xmotion.y);
+        Platform->Input.Mouse.Pos01 = V2(
+          Clamp01((f32)Platform->Input.Mouse.Pos.X / (f32)Platform->Input.RenderDim.Width),
+          Clamp01((f32)Platform->Input.Mouse.Pos.Y / (f32)Platform->Input.RenderDim.Height)
+        );
       }
       break;
       case ButtonPress:
@@ -489,8 +515,11 @@ internal b32 X11PumpEvents(platform_state *Platform)
       {
         b32 IsDown = (Event.type == ButtonPress);
         
-        Platform->Input.Mouse.Pos = V2(Event.xmotion.x, Platform->Input.RenderDim.Height - Event.xmotion.y);
-        Platform->Input.Mouse.Pos01 = Platform->Input.Mouse.Pos / Platform->Input.RenderDim;
+        Platform->Input.Mouse.Pos = V2I(Event.xmotion.x, Platform->Input.RenderDim.Height - Event.xmotion.y);
+        Platform->Input.Mouse.Pos01 = V2(
+          Clamp01((f32)Platform->Input.Mouse.Pos.X / (f32)Platform->Input.RenderDim.Width),
+          Clamp01((f32)Platform->Input.Mouse.Pos.Y / (f32)Platform->Input.RenderDim.Height)
+        );
         
         if (Event.xbutton.button == Button1)
         {
@@ -738,6 +767,18 @@ internal b32 X11PumpEvents(platform_state *Platform)
   return(Result);
 }
 
+internal void LinuxSetVSync(b32 VSync)
+{
+  if (glXSwapIntervalEXT)
+  {
+    glXSwapIntervalEXT(GlobalDisplay, GlobalWindow, VSync ? 1 : 0);
+  }
+  else if (glXSwapIntervalMESA)
+  {
+    glXSwapIntervalMESA(VSync ? 1 : 0);
+  }
+}
+
 internal b32 LinuxSetClipboardText(const char *Text)
 {
   b32 Result = true;
@@ -959,7 +1000,7 @@ internal void PlatformEndFrameReset(platform_state* Platform)
     GlobalTextPos = 0;
 
     // Clear mouse wheel
-    Platform->Input.Mouse.Wheel = V2(0, 0);
+    Platform->Input.Mouse.Wheel = V2I(0, 0);
   }
 }
 
@@ -980,7 +1021,7 @@ internal void PlatformInit(platform_state* Platform)
   {
     Platform->Shared.IsRunning = true;
     Platform->Shared.TargetFPS = 60.0f;
-    Platform->Shared.VSync = false;
+    Platform->Shared.VSync = true;
     Platform->Shared.FullScreen = false;
   }
   
@@ -1156,7 +1197,22 @@ int main(int argc, char* argv[]) {
       
       // Load extensions
       const char* GLXExtensionList = glXQueryExtensionsString(GlobalDisplay, DefaultScreen);
-      GLXLoadRequiredExtension(glXSwapIntervalEXT, SWAPINTERVALEXT, GLX_EXT_swap_control);
+      if (ExtensionInList(GLXExtensionList, "GLX_EXT_swap_control"))
+      {
+        printf("info: Found GLX_EXT_swap_control\n");
+        GLXLoadRequiredExtension(glXSwapIntervalEXT, SWAPINTERVALEXT, GLX_EXT_swap_control);
+      }
+      else if (ExtensionInList(GLXExtensionList, "GLX_MESA_swap_control"))
+      {
+        printf("info: Found GLX_MESA_swap_control\n");
+        GLXLoadRequiredExtension(glXSwapIntervalMESA, SWAPINTERVALMESA, GLX_MESA_swap_control);
+      }
+      else if (ExtensionInList(GLXExtensionList, "GLX_SGI_swap_control"))
+      {
+        // GLX_SGI_swap_control does not support setting VSync.
+        fprintf(stderr, "warning: No VSync, only GLX_SGI_swap_control available.\n");
+      }
+
       GLXLoadRequiredExtension(glXCreateContextAttribsARB, CREATECONTEXTATTRIBSARB, GLX_ARB_create_context);
       
       // Create OpenGL context
@@ -1178,7 +1234,7 @@ int main(int argc, char* argv[]) {
         X11SetWindowIconPNG("icon.png", GlobalDisplay, GlobalWindow);
         
         // Set initial VSync
-        glXSwapIntervalEXT(GlobalDisplay, GlobalWindow, 1);
+        LinuxSetVSync(true);
         XSync(GlobalDisplay, False);
         
         // Print basic OpenGL driver info
@@ -1190,7 +1246,7 @@ int main(int argc, char* argv[]) {
         
         // Audio initialization
         linux_audio Audio = {};
-        b32 Result = LinuxAudioCreate(&Audio, 2 /* ms latency */, 44100 /* samples / sec */);
+        b32 Result = LinuxAudioCreate(&Audio, 2 /* ms latency */, 48000 /* samples / sec */);
         if (Result)
         {
           ///////////////////////////////////////////////////////////////////////////////
@@ -1233,7 +1289,7 @@ int main(int argc, char* argv[]) {
           // Set platform work queue
           GlobalPlatform.Input.WorkQueue = &Queue;
           
-          f32 DeltaTimeStart = LinuxGetTimeSecs();
+          u64 DeltaTimeStart = LinuxGetTimeMicros();
           while (GlobalPlatform.Shared.IsRunning) {
             GameLibrary.OnFrameStart(&GlobalPlatform);
             
@@ -1246,11 +1302,25 @@ int main(int argc, char* argv[]) {
 
             // Get number of audio frames to write this video frame
             GlobalPlatform.Shared.AudioBuffer.FrameCount = LinuxAudioFramesToWrite(&Audio);
+
+            {
+              Window Root, Child;
+              i32 RootX, RootY, XPos, YPos;
+              u32 ButtonMasks;
+              XQueryPointer(GlobalDisplay,
+                            GlobalWindow,
+                            &Root, &Child,
+                            &RootX, &RootY,
+                            &XPos, &YPos,
+                            &ButtonMasks);
+              GlobalPlatform.Input.Mouse.Pos = V2I(XPos, GlobalPlatform.Input.RenderDim.Height - YPos);
+            }
             
             GameLibraryOpen(&GameLibrary);
-            f32 DeltaTimeSecs = LinuxGetTimeSecs() - DeltaTimeStart;
-            GameLibrary.Update(&GlobalPlatform, DeltaTimeSecs);
-            DeltaTimeStart = LinuxGetTimeSecs();
+            u64 EndTime = LinuxGetTimeMicros();
+            u64 DeltaTimeMicros = EndTime - DeltaTimeStart;
+            GameLibrary.Update(&GlobalPlatform, DeltaTimeMicros);
+            DeltaTimeStart = EndTime;
 
             // Queue up game audio for audio thread
             LinuxAudioFill(&Audio, GlobalPlatform.Shared.AudioBuffer.Samples, GlobalPlatform.Shared.AudioBuffer.FrameCount);
@@ -1264,7 +1334,8 @@ int main(int argc, char* argv[]) {
             // Update any state requested by the game
             if (OldVSync != GlobalPlatform.Shared.VSync)
             {
-              glXSwapIntervalEXT(GlobalDisplay, GlobalWindow, GlobalPlatform.Shared.VSync ? 1 : 0);
+              LinuxSetVSync(GlobalPlatform.Shared.VSync);
+              XSync(GlobalDisplay, False);
             }
             
             if (OldFullScreen != GlobalPlatform.Shared.FullScreen)

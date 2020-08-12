@@ -14,6 +14,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "ext/stb_image.h"
 
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "ext/stb_rect_pack.h"
+
 // Cross-platform threading
 #define THREAD_IMPLEMENTATION
 #include "ext/thread.h"
@@ -33,7 +36,7 @@
 // Game configuration provided to platform
 #define APP_TITLE              "Plague 2.0"
 #define DEFAULT_TARGET_FPS     60.0f
-#define PERMANENT_STORAGE_SIZE Megabytes(256)
+#define PERMANENT_STORAGE_SIZE Megabytes(512)
 #define TRANSIENT_STORAGE_SIZE Megabytes(256)
 #define DEFAULT_WINDOW_WIDTH   1280 // 1920
 #define DEFAULT_WINDOW_HEIGHT  720 // 1080
@@ -62,9 +65,9 @@ typedef enum mouse_button {
 } mouse_button;
 
 typedef struct mouse {
-  v2 Pos;
+  v2i Pos;
   v2 Pos01; // Normalized position in range [0, 1]
-  v2 Wheel; // Mouse wheel motion in X, Y direction
+  v2i Wheel; // Mouse wheel motion in X, Y direction
   button Button[MOUSE_BUTTON_MAX];
 } mouse;
 
@@ -127,9 +130,13 @@ typedef struct platform_state {
     u32 PermanentStorageSize;
     u8  *TransientStorage;
     u32 TransientStorageSize;
-    
-    v2       WindowDim;
-    v2       RenderDim;
+
+    // TODO: Consider moving to an evented system instead of this per-frame
+    // data system. May have some advantages in terms of allowing events to be
+    // "consumed" by a layer (Ex. UI layer consumes keyboard input) without
+    // being sent to higher levels of the game.
+    v2u      WindowDim;
+    v2u      RenderDim;
     mouse    Mouse;
     keyboard Keyboard;
     b32      InFocus;
@@ -166,6 +173,8 @@ typedef struct platform_state {
 #include "renderer.h" // renderer struct
 #include "shaders.h"
 #include "textures.h"
+#include "sounds.h"
+#include "mixer.h"
 #include "ui/ui.h"
 #include "ui/debug_console.h"
 
@@ -178,7 +187,7 @@ typedef void on_frame_start_fn(platform_state*);
 typedef void on_frame_end_fn(platform_state*);
 
 extern "C" {
-  void Update(platform_state *Platform, f32 DeltaTimeSecs);
+  void Update(platform_state *Platform, u64 DeltaTimeMicros);
   void Shutdown(platform_state *Platform);
   void OnFrameStart(platform_state *Platform);
   void OnFrameEnd(platform_state *Platform);
@@ -195,41 +204,75 @@ typedef struct game_state {
   
   memory_arena PermanentArena;
   memory_arena TransientArena;
-  renderer Renderer;
-  
-  v2 RenderDim; // NOTE(eric): Dimension of framebuffers used for rendering.
+
   program_mode Mode;
-  v2 MousePos;
+
+  // Input variables
+  v2u RenderDim; // NOTE(eric): Dimension of framebuffers used for rendering.
+  v2i MousePos;
   v2 MouseClip;
-  
+
+  // Catalogs and managers
   shader_catalog ShaderCatalog;
   texture_catalog TextureCatalog;
   font_manager FontManager;
-  
+  sound_manager SoundManager;
+
+  // Subsystems
+  renderer Renderer;
+  ui_context UI;
   console Console;
+  audio_player AudioPlayer;
+
+  // Right now we let various layers tell us whether or not they have consumed
+  // a given input source. These indicators allow lower layers to skip
+  // consuming that input source if it has already been consumed to avoid
+  // unexpected interactions between systems - for example, UI and game both
+  // processing the same mouse input.
+  //
+  // There's probably a nicer way to do this, but for now this is good enough
+  // given the input system that we have.
+  b32 KeyboardInputConsumed;
+  b32 MouseInputConsumed;
+  b32 TextInputConsumed;
+
+  //
+  // Below here is the working area for global game state
+  // 
+  
+  v2 PlayerP;
 
   f32 FPS;
   i32 MCPF;
+  f32 MSPF;
+  u64 StartCycles;
   u64 FrameStartTime;
+
+  b32 FrameTimeLooped;
+  u32 FrameTimeSampleIndex;
+  u64 FrameTimeSamples[120];
+
+  sound SlideSound;
+  sound WallMarketTheme;
+
+  font MonoFont;
+  font UIFont;
   
-  // TODO: Move into state-specific structs
-  v4 ClearColor;
   f32 AudioTime;
-  f32 VideoTime;
-  
-  i32 TextureOffset;
-  f32 Accum;
   
   GLuint AllPurposeVAO;
-  
   framebuffer HDRTarget;
   framebuffer FXAATarget;
-  
-  font TitleFont;
-  
-  m4x4 ViewProjectionMatrix;
-  u32 FontVAO;
-  u32 FontVBO;
+
+  // Temp
+  ui_state UIState;
+  ui_window Window[3];
+  b32 Checked;
 } game_state;
+
+typedef struct app_context {
+  game_state *Game;
+  platform_state *Platform;
+} app_context;
 
 #endif // GAME_H

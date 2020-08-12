@@ -1,55 +1,55 @@
 #ifdef VERTEX_SHADER
-layout (location = 0) in vec4 Source;
-layout (location = 1) in vec2 P0;
-layout (location = 2) in vec2 P1;
-layout (location = 3) in vec2 P2;
-layout (location = 4) in vec2 P3;
-layout (location = 5) in vec4 C0;
-layout (location = 6) in vec4 C1;
-layout (location = 7) in vec4 C2;
-layout (location = 8) in vec4 C3;
+layout (location = 0) in vec4 in_Source;
+layout (location = 1) in vec2 in_P0;
+layout (location = 2) in vec2 in_P1;
+layout (location = 3) in vec2 in_P2;
+layout (location = 4) in vec2 in_P3;
+layout (location = 5) in vec4 in_C0;
+layout (location = 6) in vec4 in_C1;
+layout (location = 7) in vec4 in_C2;
+layout (location = 8) in vec4 in_C3;
 
-uniform mat4 ViewProjection;
+uniform mat4 u_ViewProjection;
 
-out vec4 FragmentColor;
-out vec4 FragmentSource;
-out vec2 UV;
+out vec4 frag_Color;
+out vec4 frag_Source;
+out vec2 frag_UV;
 
 void main() {
   // NOTE: Vertices are a little wonky given our right-handed coordinate system.
   // If they are ordered 0-3 we get the image flipped vertically.
-  vec2 Vertices[] = vec2[](P1, P0, P3, P2);
-  vec4 Colors[] = vec4[](C1, C0, C3, C2);
-	vec2 TexCoord[] = vec2[](vec2(0, 0), vec2(0, 1), vec2(1, 0), vec2(1, 1));
+  vec2 Vertices[] = vec2[](in_P1, in_P0, in_P3, in_P2);
+  vec4 Colors[] = vec4[](in_C1, in_C0, in_C3, in_C2);
+  vec2 TexCoord[] = vec2[](vec2(0, 0), vec2(0, 1), vec2(1, 0), vec2(1, 1));
 
-  FragmentColor = Colors[gl_VertexID];
-  FragmentSource = Source;
-  UV = TexCoord[gl_VertexID];
+  frag_Color = Colors[gl_VertexID];
+  frag_Source = in_Source;
+  frag_UV = TexCoord[gl_VertexID];
 
   vec4 WorldSpace = vec4(Vertices[gl_VertexID], 0.0, 1.0);
-  gl_Position = WorldSpace * ViewProjection;
+  gl_Position = WorldSpace * u_ViewProjection;
 }
 #endif
 
 #ifdef FRAGMENT_SHADER
-in vec4 FragmentColor;
-in vec4 FragmentSource;
-in vec2 UV;
+in vec4 frag_Color;
+in vec4 frag_Source;
+in vec2 frag_UV;
 
-uniform sampler2D Texture;
-uniform vec2 TextureDim;
+uniform sampler2D u_Texture;
+uniform vec2 u_TextureDim;
 
-out vec4 ResultingColor;
+out vec4 out_Color;
 
 void main() {
-  vec2 UVOffset = FragmentSource.xy;
-  vec2 UVRange = FragmentSource.zw;
+  vec2 UVOffset = frag_Source.xy;
+  vec2 UVRange = frag_Source.zw;
     
-  vec2 SampleUV = (UVOffset + (UV * UVRange)) / TextureDim;
-  ResultingColor = texture(Texture, SampleUV);
+  vec2 SampleUV = (UVOffset + (frag_UV * UVRange)) / u_TextureDim;
+  out_Color = texture(u_Texture, SampleUV);
+  out_Color *= frag_Color;
 
   // Handle pre-multiplied alpha
-  ResultingColor *= FragmentColor;
-  ResultingColor.xyz /= ResultingColor.a;
+  //out_Color.xyz /= out_Color.a;
 }
 #endif

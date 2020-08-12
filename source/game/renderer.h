@@ -78,6 +78,7 @@ typedef struct render_request {
     } TexturedQuad;
     
     struct {
+      v2 PackedTextureDim;
       GLuint TextureID;
     } Text;
 
@@ -92,7 +93,7 @@ typedef struct render_request {
 } render_request;
 
 typedef struct renderer {
-  v2 Dim;
+  v2u Dim;
   char *Extensions;
   shader_catalog *ShaderCatalog;
   
@@ -127,8 +128,8 @@ typedef struct renderer {
   
   indexed_render_buffer TextBuffer;
   u32 TextInstanceDataPos;
-  // NOTE: x,y u,v r,g,b,a
-#define RENDERER_BYTES_PER_TEXT (sizeof(f32) * 8)
+  // NOTE: x,y,w,h(dest) x,y,w,h(src) r,g,b,a
+#define RENDERER_BYTES_PER_TEXT (sizeof(f32) * 12)
   u8 TextInstanceData[RENDERER_TEXTS_MAX * RENDERER_BYTES_PER_TEXT];
   
   // Clipping stack
@@ -149,7 +150,7 @@ typedef struct renderer {
 internal framebuffer FramebufferCreate(u32 Width, u32 Height);
 internal void FramebufferDestroy(framebuffer *Framebuffer);
 internal b32 FramebufferIsValid(framebuffer *Framebuffer);
-internal void FramebufferMaybeResize(framebuffer *Framebuffer, v2 RenderDim);
+internal void FramebufferMaybeResize(framebuffer *Framebuffer, v2i RenderDim);
 internal void FramebufferAttachTexture(framebuffer *Framebuffer, framebuffer_texture_format Format);
 internal void FramebufferBindToTexture(framebuffer *Framebuffer, GLuint Texture);
 
@@ -167,7 +168,7 @@ internal void IndexedRenderBufferSetAttrib(indexed_render_buffer *Buffer, u32 In
 
 internal void RendererCreate(platform_state *Platform, renderer *Renderer, shader_catalog *ShaderCatalog);
 internal void RendererDestroy(renderer *Renderer);
-internal void RendererBeginFrame(renderer *Renderer, platform_state *Platform, v2 Dim);
+internal void RendererBeginFrame(renderer *Renderer, platform_state *Platform, v2i Dim);
 internal void RendererEndFrame(renderer *Renderer);
 internal void RendererFlush(renderer *Renderer);
 internal void RendererClear(renderer* Renderer, v4 ClearColor);
@@ -175,15 +176,15 @@ internal void RendererClear(renderer* Renderer, v4 ClearColor);
 internal void RendererSetTarget(renderer *Renderer, framebuffer *Target);
 internal void RendererClearTarget(renderer *Renderer);
 
-internal void Renderer2DRightHanded(renderer *Renderer, v2 Dim);
+internal void Renderer2DRightHanded(renderer *Renderer, v2i Dim);
 
 internal void RendererFinishActiveRequest(renderer *Renderer);
 internal void RendererPushLine(renderer *Renderer, u32 Flags, v2 Start, v2 End, v4 Color);
-internal void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color);
+internal inline void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color);
 internal void RendererPushFilledCircle(renderer *Renderer, u32 Flags, v2 Center, f32 Radius, v4 Color);
 internal void RendererPushTexturedQuad(renderer* Renderer, u32 Flags, GLuint TextureID, v2 TextureDim, v4 SourceRect, v4 DestRect, v4 Color);
-internal void RendererPushTexture(renderer *Renderer, u32 Flags, texture Texture, v4 SourceRect, v4 DestRect, v4 Color);
-internal void RendererPushText(renderer *Renderer, u32 Flags, font *Font, const char *Text, v2 Pos, v4 Color);
+internal inline void RendererPushTexture(renderer *Renderer, u32 Flags, texture Texture, v4 SourceRect, v4 DestRect, v4 Color);
+internal void RendererPushText(renderer *Renderer, u32 Flags, font *Font, const char* Text, v2 Pos, v4 Color);
 
 // Clipping
 internal void RendererPushClip(renderer *Renderer, v4 ClipRect);

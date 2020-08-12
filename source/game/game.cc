@@ -9,6 +9,9 @@
 #include "renderer.cc"
 #include "fonts.cc"
 #include "textures.cc"
+#include "sounds.cc"
+#include "mixer.cc"
+#include "ui/ui.cc"
 #include "ui/debug_console.cc"
 
 // Internal interfaces defined below platform layer
@@ -34,13 +37,17 @@ internal render_resolution AvailableRenderResolutions[] = {
 static char *ToyShaderFile = "../assets/shaders/toy_shader.gl";
 static char *ToneMapperFile = "../assets/shaders/tone_mapper.gl";
 static char *FXAAShaderFile = "../assets/shaders/fxaa.gl";
-static char *BitmapFontShaderFile = "../assets/shaders/bitmap_font.gl";
+static char *PackedBitmapFontShaderFile = "../assets/shaders/bitmap_font_packed.gl";
 static char *LineShaderFile = "../assets/shaders/line.gl";
 static char *FilledRectShaderFile = "../assets/shaders/filled_rect.gl";
 static char *FilledCircleShaderFile = "../assets/shaders/filled_circle.gl";
 static char *TexturedQuadShaderFile = "../assets/shaders/textured_quad.gl";
 
-void UpdateAudio(game_state *GameState, platform_state *Platform, f32 DeltaTimeSecs)
+#if 0
+// NOTE: This method is left over from testing the platform layer audio. It is
+// a good, continuous sound test for new platform audio layers that can help
+// detect pops and other audio issues.
+void TestUpdateAudio(game_state *GameState, platform_state *Platform, f32 DeltaTimeSecs)
 {
   i16 ToneVolume = 3000;
   i32 ToneHz = (250 + (Platform->Input.Mouse.Pos01.X - 0.25) * 150);
@@ -63,119 +70,205 @@ void UpdateAudio(game_state *GameState, platform_state *Platform, f32 DeltaTimeS
     }
   }
 }
+#endif
 
-void SimulateGame(game_state *GameState, platform_state *Platform, f32 DeltaTimeSecs)
+// NOTE: General structure of a subsystem of the engine
+#if 0
+void SubsystemUpdate(game_state *GameState, platform_state *Platform, f32 DeltaTimeSecs)
 {
+  // Update console
+
+  // Define UI
+
+  // Update components
+  if (!GameState->KeyboardInputConsumed)
+  {
+    // Process keyboard input
+  }
+
+  if (!GameState->MouseInputConsumed)
+  {
+    // Process mouse input
+  }
+
+  if (!GameState->TextInputConsumed)
+  {
+    // Process text input
+  }
+
+  {
+    // Subsystem updates
+  }
+
+  // Render subystem
+
+  // Render UI
+
+  // Render Console
+}
+#endif
+
+void SimulateGame(app_context Ctx, u64 DeltaTimeMicros)
+{
+  renderer *Renderer = &Ctx.Game->Renderer;
+  ui_context *UI = &Ctx.Game->UI;
+  audio_player *AudioPlayer = &Ctx.Game->AudioPlayer;
+
+  // Update console
+  ConsoleUpdate(&Ctx.Game->Console, Ctx, DeltaTimeMicros);
+  Ctx.Game->KeyboardInputConsumed |= Ctx.Game->Console.KeyboardInputConsumed;
+  Ctx.Game->MouseInputConsumed |= Ctx.Game->Console.MouseInputConsumed;
+  Ctx.Game->TextInputConsumed |= Ctx.Game->Console.TextInputConsumed;
+
+  // UI Definition: Will not be rendered until command list is processed
+  // 
+  // UI components should be rendered first so that information about
+  // whether mouse or keyboard input is captured can be sent to the rest of
+  // the application.
+  if (!Ctx.Game->KeyboardInputConsumed)
+  {
+    // TODO: Update UI with new keyboard input
+  }
+
+  if (!Ctx.Game->MouseInputConsumed)
+  {
+    // TODO: Update UI with new mouse input
+  }
+
+  if (!Ctx.Game->TextInputConsumed)
+  {
+    // TODO: Update UI with new text input
+  }
+
   // Process input
-  if (KeyPressed(Platform, KEY_esc))
+  if (KeyPressed(Ctx.Platform, KEY_esc))
   {
-    Platform->Shared.IsRunning = false;
+    Ctx.Platform->Shared.IsRunning = false;
   }
 
-  if (KeyPressed(Platform, KEY_f2))
+  if (KeyPressed(Ctx.Platform, KEY_f2))
   {
-    Platform->Shared.FullScreen = !Platform->Shared.FullScreen;
+    Ctx.Platform->Shared.FullScreen = !Ctx.Platform->Shared.FullScreen;
   }
   
-  if (!ConsoleIsActive(&GameState->Console))
+  if (KeyPressed(Ctx.Platform, KEY_f3))
   {
-    if (KeyPressed(Platform, KEY_f1))
-    {
-      ConsoleLog(&GameState->Console, "info: Forcing async texture load.");
-      GameState->TextureCatalog.AllowAsync = !GameState->TextureCatalog.AllowAsync;
-    }
+    AudioPlayerPlaySound(AudioPlayer, Ctx.Game->SlideSound, V2(1.0f), false);
   }
-  
-  GameState->Accum += 1/60.0f;
-  
-  if (GameState->Accum > 0.1f) {
-    GameState->Accum = 0.0f;
-    GameState->TextureOffset = (GameState->TextureOffset + 32) % 128;
-  }
-  
-  // Simulate
-  GameState->VideoTime += 1 / 60.0f;
-  if (ConsoleIsActive(&GameState->Console)) {
-    ConsoleInputMouse(&GameState->Console, Platform->Input.Mouse.Pos);
-  }
-  
+
   // Render (Simple Test Render Pipeline)
-  RendererBeginFrame(&GameState->Renderer, Platform, Platform->Input.RenderDim);
+  RendererBeginFrame(Renderer, Ctx.Platform, Ctx.Platform->Input.RenderDim);
   {
-    RendererSetTarget(&GameState->Renderer, &GameState->HDRTarget);
-    RendererClear(&GameState->Renderer, V4(0, 0, 0, 0));
+    RendererSetTarget(Renderer, &Ctx.Game->HDRTarget);
+    RendererClear(Renderer, V4(0, 0, 0, 0));
     
-    // Render Toy Shader
-    GLuint Shader;
-    Shader = ShaderCatalogUse(&GameState->ShaderCatalog, "toy_shader");
+    // Render Game Data
+    Renderer2DRightHanded(Renderer, Ctx.Game->RenderDim);
     {
-      glBindVertexArray(GameState->AllPurposeVAO);
-      {
-        glUniform2f(glGetUniformLocation(Shader, "Mouse"), GameState->MousePos.X, GameState->MousePos.Y);
-        glUniform2f(glGetUniformLocation(Shader, "RenderDim"), GameState->RenderDim.Width, GameState->RenderDim.Height);
-        glUniform1f(glGetUniformLocation(Shader, "Time"), GameState->VideoTime);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-      }
-      glBindVertexArray(0);
     }
-    glUseProgram(0);
+    RendererPopMVPMatrix(Renderer);
+    RendererFlush(Renderer);
     
-    Renderer2DRightHanded(&GameState->Renderer, GameState->RenderDim);
-    RendererPushLine(&GameState->Renderer, 0, V2(0, 0), V2(1920, 1080), V4(1, 1, 1, 1));
-    RendererPushFilledRect(&GameState->Renderer, 0, V4(100, 200, 200, 400), V4(1, 0, 0, 1));
-    RendererPushFilledRect(&GameState->Renderer, 0, V4(200, 200, 200, 300), V4(0, 1, 0, 1));
-    RendererPushFilledCircle(&GameState->Renderer, 0, V2(GameState->RenderDim.Width / 2, GameState->RenderDim.Height / 2), 200, V4(1, 1, 0, 1));
-    RendererPushFilledRect(&GameState->Renderer, 0, V4(GameState->RenderDim.Width / 2 - 25, GameState->RenderDim.Height / 2 - 25, 25, 25), V4(1, 0, 0, 1));
-    texture Monk = TextureCatalogGet(&GameState->TextureCatalog, Platform, "monk_idle");
-    RendererPushTexture(&GameState->Renderer,
-                        0,
-                        Monk,
-                        V4(GameState->TextureOffset, 0, 32, 32),
-                        V4(100, 300, 256, 256),
-                        V4(1, 1, 1, 1));
-    RendererPushTexture(&GameState->Renderer,
-                        0,
-                        Monk,
-                        V4(GameState->TextureOffset, 0, 32, 32),
-                        V4(800, 800, 256, 256),
-                        V4(1, 1, 1, 1));
-    
-    texture Guy = TextureCatalogGet(&GameState->TextureCatalog, Platform, "guy_idle");
-    RendererPushTexture(&GameState->Renderer,
-                        0,
-                        Guy,
-                        V4(GameState->TextureOffset, 0, 32, 32),
-                        V4(300, 300, 256, 256),
-                        V4(1, 1, 1, 1));
-    RendererPopMVPMatrix(&GameState->Renderer);
-    RendererFlush(&GameState->Renderer);
-    
-    // NOTE: UI pass goes here
-    Renderer2DRightHanded(&GameState->Renderer, GameState->RenderDim);
-    static char MousePosText[256];
-    ConsoleUpdate(&GameState->Console, GameState, Platform, DeltaTimeSecs);
+    // Render UI and Overlays
+    {
+      // Render UI
+      BeginWidgets(&Ctx.Game->UIState, Ctx);
+      {
+        if (WidgetWindowBegin(&Ctx.Game->UIState, Ctx, V4(90, 350, 300, 300), "Test Window", &Ctx.Game->Window[0]))
+        {
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(100, 400, 200, 50), "Clickaroo"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO");
+          }
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(150, 450, 200, 50), "Clickaroo 2"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO2");
+          }
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(100, 450, 200, 50), "Clickaroo 3"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO3");
+          }
+          if (WidgetCheckbox(&Ctx.Game->UIState, Ctx, V4(100, 450, 200, 50), "VSync", &Ctx.Platform->Shared.VSync))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CHECKED");
+          }
 
-    
-    snprintf(MousePosText, 256, "(%0.0f, %0.0f)", Platform->Input.Mouse.Pos01.X * GameState->RenderDim.Width, Platform->Input.Mouse.Pos01.Y * GameState->RenderDim.Height);
-    RendererPushText(&GameState->Renderer, 0, &GameState->TitleFont, MousePosText, V2(GameState->RenderDim.Width / 2, GameState->RenderDim.Height / 2), V4(0, 0, 0, 1));
+          WidgetWindowEnd(&Ctx.Game->UIState);
+        }
 
-    snprintf(MousePosText, 256, "FPS: %0.00f, MCPF: %d", GameState->FPS, GameState->MCPF);
-    RendererPushText(&GameState->Renderer, 0, &GameState->TitleFont, MousePosText, V2(0, FontTextHeightPixels(&GameState->TitleFont)), V4(1, 1, 1, 1));
-    RendererPopMVPMatrix(&GameState->Renderer);
-    RendererFlush(&GameState->Renderer);
+        if (WidgetWindowBegin(&Ctx.Game->UIState, Ctx, V4(500, 250, 300, 300), "Other Window", &Ctx.Game->Window[1]))
+        {
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(500, 400, 200, 50), "Clickaroo"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO (Window 2)");
+          }
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(550, 350, 200, 50), "Clickaroo 2"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO2 (Window 2)");
+          }
+          WidgetWindowEnd(&Ctx.Game->UIState);
+        }
+
+        if (WidgetWindowBegin(&Ctx.Game->UIState, Ctx, V4(700, 450, 300, 300), "Third Window", &Ctx.Game->Window[2]))
+        {
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(500, 400, 200, 50), "Clickaroo"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO (Window 3)");
+          }
+          if (WidgetButton(&Ctx.Game->UIState, Ctx, V4(550, 350, 200, 50), "Clickaroo 2"))
+          {
+            ConsoleLog(&Ctx.Game->Console, "CLIACKAROO2 (Window 3)");
+          }
+          WidgetWindowEnd(&Ctx.Game->UIState);
+        }
+      }
+      EndWidgets(&Ctx.Game->UIState);
+
+      // Render the debug console
+      ConsoleRender(&Ctx.Game->Console, Renderer);
+
+      static char FPSText[256];
+      snprintf(FPSText, 256, "FPS: %0.00f, MCPF: %03d, MSPF: %0.04f", Ctx.Game->FPS, Ctx.Game->MCPF, Ctx.Game->MSPF);
+
+      f32 TextWidth = FontTextWidthPixels(&Ctx.Game->MonoFont, FPSText);
+
+      if (DrawCheckbox(Renderer, Ctx, &Ctx.Game->TextureCatalog, "VSync", V4(TextWidth + 10, FontTextHeightPixels(&Ctx.Game->MonoFont) - 8, 32, 32), DefaultButtonStyle, &Ctx.Platform->Shared.VSync))
+      {
+        ConsoleLog(&Ctx.Game->Console, "CHECKBOX");
+      }
+
+      if (DrawButton(Renderer, Ctx, "Reopen Windows", V4(TextWidth + 115, FontTextHeightPixels(&Ctx.Game->MonoFont) - 10, 190, 40), DefaultButtonStyle))
+      {
+        ConsoleLog(&Ctx.Game->Console, "CLICKED");
+        foreach (I, ArrayCount(Ctx.Game->Window)) {
+          Ctx.Game->Window[I].IsOpen = true;
+        }
+      }
+
+      // Render FPS output
+      Renderer2DRightHanded(Renderer, Ctx.Game->RenderDim);
+      {
+        RendererPushText(
+          Renderer, 0, &Ctx.Game->MonoFont, FPSText, V2(0, FontTextHeightPixels(&Ctx.Game->MonoFont)), V4(1, 1, 1, 1)
+        );
+      }
+      RendererPopMVPMatrix(Renderer);
+    }
+    RendererFlush(Renderer);
     
     // FXAA Pass
+    GLuint Shader;
 #ifdef FXAA_PASS
-    RendererClearTarget(&GameState->Renderer);
-    RendererSetTarget(&GameState->Renderer, &GameState->FXAATarget);
-    RendererClear(&GameState->Renderer, V4(0, 0, 0, 0));
-    Shader = ShaderCatalogUse(&GameState->ShaderCatalog, "fxaa");
+    RendererClearTarget(Renderer);
+    RendererSetTarget(Renderer, &Ctx.Game->FXAATarget);
+    RendererClear(Renderer, V4(0, 0, 0, 0));
+    Shader = ShaderCatalogUse(&Ctx.Game->ShaderCatalog, "fxaa");
     {
-      glBindVertexArray(GameState->AllPurposeVAO);
+      glBindVertexArray(Ctx.Game->AllPurposeVAO);
       {
-        FramebufferBindToTexture(&GameState->HDRTarget, GL_TEXTURE0);
-        glUniform2f(glGetUniformLocation(Shader, "TexResolution"), GameState->RenderDim.Width, GameState->RenderDim.Height);
-        glUniform1i(glGetUniformLocation(Shader, "Texture"), 0);
+        FramebufferBindToTexture(&Ctx.Game->HDRTarget, GL_TEXTURE0);
+        glUniform2f(glGetUniformLocation(Shader, "u_TexResolution"), Ctx.Game->RenderDim.Width, Ctx.Game->RenderDim.Height);
+        glUniform1i(glGetUniformLocation(Shader, "u_Texture"), 0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
       }
       glBindVertexArray(0);
@@ -184,18 +277,18 @@ void SimulateGame(game_state *GameState, platform_state *Platform, f32 DeltaTime
 #endif
 
     // Gamma Correction and HDR => LDR Tone Mapping
-    RendererClearTarget(&GameState->Renderer);
+    RendererClearTarget(Renderer);
     //RendererClear(&GameState->Renderer, V4(0, 0, 0, 0));
-    Shader = ShaderCatalogUse(&GameState->ShaderCatalog, "tone_mapper");
+    Shader = ShaderCatalogUse(&Ctx.Game->ShaderCatalog, "tone_mapper");
     {
-      glBindVertexArray(GameState->AllPurposeVAO);
+      glBindVertexArray(Ctx.Game->AllPurposeVAO);
       {
 #ifdef FXAA_PASS
-        FramebufferBindToTexture(&GameState->FXAATarget, GL_TEXTURE0);
+        FramebufferBindToTexture(&Ctx.Game->FXAATarget, GL_TEXTURE0);
 #else
-        FramebufferBindToTexture(&GameState->HDRTarget, GL_TEXTURE0);
+        FramebufferBindToTexture(&Ctx.Game->HDRTarget, GL_TEXTURE0);
 #endif // FXAA_PASS
-        glUniform1i(glGetUniformLocation(Shader, "HDRBuffer"), 0);
+        glUniform1i(glGetUniformLocation(Shader, "u_HDRBuffer"), 0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
       }
       glBindVertexArray(0);
@@ -205,23 +298,25 @@ void SimulateGame(game_state *GameState, platform_state *Platform, f32 DeltaTime
     // TODO: Render everything into a final multi-sampled framebuffer then
     // blit this to the screen framebuffer for MSAA rendering.
   }
-  RendererEndFrame(&GameState->Renderer);
+  RendererEndFrame(Renderer);
 }
 
-void Update(platform_state *Platform, f32 DeltaTimeSecs)
+void Update(platform_state *Platform, u64 DeltaTimeMicros)
 {
   game_state *GameState = FetchGameState(Platform);
+  app_context Ctx = {GameState, Platform};
   
   switch (GameState->Mode) {
-    case PROGRAM_MODE_game:
-    {
-      SimulateGame(GameState, Platform, DeltaTimeSecs);
-    }
-    break;
-    default: break;
+  case PROGRAM_MODE_game:
+  {
+    SimulateGame(Ctx, DeltaTimeMicros);
+  }
+  break;
+  default: break;
   }
 
-  UpdateAudio(GameState, Platform, DeltaTimeSecs);
+  //UpdateAudio(GameState, Platform, DeltaTimeSecs);
+  UpdateAndMixAudio(&GameState->AudioPlayer, &Platform->Shared.AudioBuffer, (f32)DeltaTimeMicros / 1000000.0f);
   
   // Hot reload catalogs if needed
   ShaderCatalogUpdate(&GameState->ShaderCatalog, Platform);
@@ -231,42 +326,62 @@ void Update(platform_state *Platform, f32 DeltaTimeSecs)
 void Shutdown(platform_state *Platform)
 {
   game_state *GameState = FetchGameState(Platform);
-  RendererDestroy(&GameState->Renderer);
-  ShaderCatalogDestroy(&GameState->ShaderCatalog);
-  TextureCatalogDestroy(&GameState->TextureCatalog);
-  glDeleteBuffers(1, &GameState->AllPurposeVAO);
-  
+
   FramebufferDestroy(&GameState->HDRTarget);
   FramebufferDestroy(&GameState->FXAATarget);
+  RendererDestroy(&GameState->Renderer);
+  glDeleteBuffers(1, &GameState->AllPurposeVAO);
   
-  FontManagerDestroyFont(&GameState->FontManager, &GameState->TitleFont);
+  TextureCatalogDestroy(&GameState->TextureCatalog);
+  
+  ShaderCatalogDestroy(&GameState->ShaderCatalog);
+  
+  FontManagerDestroyFont(&GameState->FontManager, &GameState->MonoFont);
+  FontManagerDestroyFont(&GameState->FontManager, &GameState->UIFont);
   FontManagerDestroy(&GameState->FontManager);
-}
 
-static struct timespec StartTime = {};
-static u64 StartCycles = 0;
+  AudioPlayerDestroy(&GameState->AudioPlayer);
+  SoundManagerDestroySound(&GameState->SoundManager, &GameState->SlideSound, Platform);
+  SoundManagerDestroySound(&GameState->SoundManager, &GameState->WallMarketTheme, Platform);
+  SoundManagerDestroy(&GameState->SoundManager);
+}
 
 void OnFrameStart(platform_state *Platform)
 {
   game_state *GameState = FetchGameState(Platform);
-  // TODO: Create a platform-layer performance counter to replace this. The
-  // current GetTimeSecs is not accurate enough.
-  clock_gettime(CLOCK_MONOTONIC_RAW, &StartTime);
-  StartCycles = __rdtsc();
-  //GameState->FrameStartTime = Platform->Interface.GetTimeMs();
-  //printf("%0.02f\n", GameState->FrameStartTime);
+  GameState->StartCycles = __rdtsc();
+  GameState->FrameStartTime = Platform->Interface.GetTimeMs();
+  GameState->FrameTimeSamples[GameState->FrameTimeSampleIndex] = Platform->Interface.GetTimeMs();
 }
 
 void OnFrameEnd(platform_state *Platform)
 {
   game_state *GameState = FetchGameState(Platform);
-  struct timespec EndTime;
-  clock_gettime(CLOCK_MONOTONIC_RAW, &EndTime);
-  u64 Ticks = ((EndTime.tv_sec - StartTime.tv_sec) * 1e9) + (EndTime.tv_nsec - StartTime.tv_nsec);
+
+  // Calculate cycles per frame
   u64 EndCycles = __rdtsc();
-  GameState->FPS = 1e9 / (f32)Ticks;
-  GameState->MCPF = SafeTruncateUInt64((EndCycles - StartCycles) / (1000 * 1000));
-  //GameState->FPS = 1.0f / ((Platform->Interface.GetTimeMs() - GameState->FrameStartTime) / 1000.0f);
+  GameState->MCPF = SafeTruncateUInt64((EndCycles - GameState->StartCycles) / (1000 * 1000));
+
+  // Calculate average FPS
+  GameState->FrameTimeSamples[GameState->FrameTimeSampleIndex] = Platform->Interface.GetTimeMs() - GameState->FrameTimeSamples[GameState->FrameTimeSampleIndex];
+  ++GameState->FrameTimeSampleIndex;
+  if (GameState->FrameTimeSampleIndex >= ArrayCount(GameState->FrameTimeSamples))
+  {
+    GameState->FrameTimeLooped = true;
+    GameState->FrameTimeSampleIndex = 0;
+  }
+  u64 FPSTotal = 0;
+  u32 MaxIndex = ArrayCount(GameState->FrameTimeSamples);
+  if (!GameState->FrameTimeLooped)
+  {
+    MaxIndex = GameState->FrameTimeSampleIndex;
+  }
+  foreach (I, MaxIndex)
+  {
+    FPSTotal += GameState->FrameTimeSamples[I];
+  }
+  GameState->MSPF = (f32)FPSTotal / MaxIndex;
+  GameState->FPS = 1.0f / ((f32)FPSTotal / (MaxIndex * 1000.0f));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -274,10 +389,10 @@ void OnFrameEnd(platform_state *Platform)
 internal game_state* FetchGameState(platform_state *Platform)
 {
   game_state *GameState = (game_state*)Platform->Input.PermanentStorage;
+
+  // Initialize
   if (!GameState->IsInitialized)
   {
-    Platform->Shared.VSync = false;
-    
     {
       GameState->PermanentArena = ArenaInit(Platform->Input.PermanentStorage + sizeof(game_state),
                                             Platform->Input.PermanentStorageSize - sizeof(game_state));
@@ -292,7 +407,10 @@ internal game_state* FetchGameState(platform_state *Platform)
       RendererCreate(Platform, &GameState->Renderer, &GameState->ShaderCatalog);
       
       // TODO: Replace with configurable rendering resolution
-      GameState->RenderDim = V2(1920, 1080);
+      GameState->RenderDim = V2U(1920, 1080);
+      GameState->Mode = PROGRAM_MODE_game;
+      GameState->AudioTime = 0.0f;
+      GameState->PlayerP = V2(0, 0);
     }
     
     glGenVertexArrays(1, &GameState->AllPurposeVAO);
@@ -311,16 +429,10 @@ internal game_state* FetchGameState(platform_state *Platform)
       Platform->Interface.Log("error: fxaa framebuffer not complete.\n");
     }
     
-    GameState->Mode = PROGRAM_MODE_game;
-    GameState->AudioTime = 0.0f;
-    GameState->VideoTime = 0.0f;
-    
-    // NOTE(eric): Clear to all zeros to avoid alpha-blending issues when
-    // reconciling HDR => LDR.
-    GameState->ClearColor = V4(0, 0, 0, 0);
-    
+    // Font manager
 #if 1
-    const char* FontFace = "PragmataPro_Regular.ttf";
+    const char* FontFace = "PragmataPro_Bold.ttf";
+    //const char* FontFace = "PragmataPro_Regular.ttf";
     //const char* FontFace = "Hack-Regular.ttf";
 #else
     //const char* FontFace = "../assets/fonts/PragmataPro_Bold.ttf";
@@ -328,18 +440,17 @@ internal game_state* FetchGameState(platform_state *Platform)
 #endif
     
     FontManagerInit(&GameState->FontManager, "../assets/fonts");
-    FontManagerLoadFont(&GameState->FontManager, &GameState->TitleFont, FontFace, 24); 
+    FontManagerLoadFont(&GameState->FontManager, &GameState->MonoFont, FontFace, 24, &GameState->TransientArena);
+    FontManagerLoadFont(&GameState->FontManager, &GameState->UIFont, FontFace, 16, &GameState->TransientArena);
+
+    // Sound manager
+    SoundManagerInit(&GameState->SoundManager, "../assets/sounds");
+    SoundManagerLoadSound(&GameState->SoundManager, &GameState->SlideSound, Platform, "boxslide.ogg");
+    SoundManagerLoadSound(&GameState->SoundManager, &GameState->WallMarketTheme, Platform, "wall_market_theme.ogg");
+
+    AudioPlayerInit(&GameState->AudioPlayer, &GameState->PermanentArena);
+    //AudioPlayerPlaySound(&GameState->AudioPlayer, GameState->WallMarketTheme, V2(1.0f), false);
    
-    glGenVertexArrays(1, &GameState->FontVAO);
-    glGenBuffers(1, &GameState->FontVBO);
-    glBindVertexArray(GameState->FontVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, GameState->FontVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(f32) * 4 * 4, NULL, GL_DYNAMIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(f32), 0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    
     {
       // NOTE: The renderer depends on the presence of certain shaders in the 
       // shader catalog in order to render primitives. These shaders should be
@@ -349,17 +460,16 @@ internal game_state* FetchGameState(platform_state *Platform)
       ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, FilledRectShaderFile, "filled_rect");
       ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, FilledCircleShaderFile, "filled_circle");
       ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, TexturedQuadShaderFile, "textured_quad");
-      ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, BitmapFontShaderFile, "bitmap_font");
+      ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, PackedBitmapFontShaderFile, "bitmap_font");
       
       // NOTE: Toy shaders that may be moved into the renderer later
-      ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, ToyShaderFile, "toy_shader");
       ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, ToneMapperFile, "tone_mapper");
       ShaderCatalogAdd(&GameState->ShaderCatalog, Platform, FXAAShaderFile, "fxaa");
     }
     
     // Initialize UI components
     {
-      ConsoleCreate(&GameState->Console, &GameState->TitleFont);
+      ConsoleCreate(&GameState->Console, &GameState->MonoFont, &GameState->TransientArena);
 
       // Insert some test data into the debug console to overflow the content
       // area and trigger the scroll bar.
@@ -390,21 +500,37 @@ internal game_state* FetchGameState(platform_state *Platform)
       }
 #endif
     }
-    
+
+    GameState->UIState = {};
+    UIStateInit(&GameState->UIState, &GameState->UIFont, &GameState->TextureCatalog, &GameState->Renderer);
+    foreach(I, ArrayCount(GameState->Window)) {
+      GameState->Window[I].IsOpen = true;
+    }
+
     GameState->IsInitialized = true;
   }
 
-  // Every frame, do these things when game state is fetched
+  // Update (per-frame)
   {
     // NOTE(eric): Use the platform normalized mouse position to calculate the
     // mouse position in the viewport. Since we render at a constant 
     // resolution regardless of window size this is generally not the same as
     // the "window mouse position".
-    GameState->MousePos = GameState->RenderDim * Platform->Input.Mouse.Pos01;
+    GameState->MousePos = V2I(
+      GameState->RenderDim.X * Platform->Input.Mouse.Pos01.X,
+      GameState->RenderDim.Y * Platform->Input.Mouse.Pos01.Y
+    );
     
-    // NOTE(eric): Convert the calculate viewport space position to clip space
+    // NOTE(eric): Convert the calculated viewport space position to clip space
     // so that we can use it to unproject mouse coordinates in our tools.
-    GameState->MouseClip = ScreenToClipSpace(GameState->MousePos, GameState->RenderDim);
+    //GameState->MouseClip = ScreenToClipSpace(GameState->MousePos, GameState->RenderDim);
+
+    // Clear these to false ever frame to allow more subsystems to consume
+    // input
+    GameState->KeyboardInputConsumed = false;
+    GameState->MouseInputConsumed = false;
+    GameState->TextInputConsumed = false;
+    DefaultButtonStyle.Font = &GameState->MonoFont;
   }
   
   return(GameState);

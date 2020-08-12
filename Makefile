@@ -60,6 +60,10 @@ LIBRARY_FILES=source/common/language_layer.h \
         source/game/textures.cc \
         source/game/fonts.h \
         source/game/fonts.cc \
+        source/game/sounds.h \
+        source/game/sounds.cc \
+	source/game/mixer.h \
+        source/game/mixer.cc \
         source/game/ui/ui.h \
         source/game/ui/ui.cc \
 	source/game/ui/debug_console.h \
@@ -108,7 +112,7 @@ $(GAME_LIBRARY): build $(LIBRARY_BUILD_MAIN) $(LIBRARY_FILES)
 	@rm -rf $(BUILD_DIR)/build.lock
 
 run/game: $(GAME_LIBRARY) $(GAME_EXECUTABLE) $(PLATFORM_BUILD_MAIN) $(LIBRARY_FILES)
-	cd $(BUILD_DIR) && ./$(BUILD_TARGET)
+	cd $(BUILD_DIR) && LSAN_OPTIONS=suppressions=../linux_lsan_suppressions.supp ./$(BUILD_TARGET)
 
 build:
 	@mkdir -p build

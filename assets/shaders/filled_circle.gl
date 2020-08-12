@@ -1,49 +1,50 @@
 #ifdef VERTEX_SHADER
-layout (location = 0) in vec2 P0;
-layout (location = 1) in vec2 P1;
-layout (location = 2) in vec2 P2;
-layout (location = 3) in vec2 P3;
-layout (location = 4) in vec3 Circle; // x, y, radius
-layout (location = 5) in vec4 Color;
+layout (location = 0) in vec2 in_P0;
+layout (location = 1) in vec2 in_P1;
+layout (location = 2) in vec2 in_P2;
+layout (location = 3) in vec2 in_P3;
+layout (location = 4) in vec3 in_Circle; // x, y, radius
+layout (location = 5) in vec4 in_Color;
 
-out vec2 Point;
-out vec3 FragmentCircle;
-out vec4 FragmentColor;
+uniform mat4 u_ViewProjection;
 
-uniform mat4 ViewProjection;
+out vec2 frag_Point;
+out vec3 frag_Circle;
+out vec4 frag_Color;
 
 void main()
 {
-  vec2 Vertices[] = vec2[](P0, P1, P2, P3);
-  FragmentColor = Color;
-  FragmentCircle = Circle;
+  vec2 Vertices[] = vec2[](in_P0, in_P1, in_P2, in_P3);
 
+  frag_Color = in_Color;
+  frag_Circle = in_Circle;
+  frag_Point = Vertices[gl_VertexID];
+  
   vec4 WorldSpace = vec4(Vertices[gl_VertexID], 0, 1.0);
-  gl_Position = WorldSpace * ViewProjection;
-  Point = Vertices[gl_VertexID];
+  gl_Position = WorldSpace * u_ViewProjection;
 }
 #endif
 
 #ifdef FRAGMENT_SHADER
-in vec2 Point;
-in vec3 FragmentCircle;
-in vec4 FragmentColor;
+in vec2 frag_Point;
+in vec3 frag_Circle;
+in vec4 frag_Color;
 
-out vec4 ResultingColor;
+out vec4 out_Color;
 
 void main()
 {
-  vec2 Ray = FragmentCircle.xy - Point;
+  vec2 Ray = frag_Circle.xy - frag_Point;
   float Distance = sqrt(dot(Ray, Ray));
 
 #if 1
-  if (Distance <= FragmentCircle.z) {
-    ResultingColor = FragmentColor;
+  if (Distance <= frag_Circle.z) {
+    out_Color = frag_Color;
   } else {
     discard;
   }
 #else
-  ResultingColor = FragmentColor;
+  out_Color = frag_Color;
 #endif
 }
 #endif

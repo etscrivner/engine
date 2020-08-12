@@ -1,0 +1,48 @@
+#ifdef VERTEX_SHADER
+layout (location = 0) in vec4 in_Vertex; // <vec2 pos, vec2 offset>
+layout (location = 1) in vec4 in_TextureSource; // <x, y, w, h>
+layout (location = 2) in vec4 in_TextColor;
+
+uniform mat4 u_ViewProjection;
+
+out vec2 frag_UV;
+out vec4 frag_Source;
+out vec4 frag_Color;
+
+void main()
+{
+        vec2 Vertices[] = vec2[](
+                in_Vertex.xy,
+                in_Vertex.xy + vec2(in_Vertex.z, 0),
+                in_Vertex.xy + vec2(0, in_Vertex.w),
+                in_Vertex.xy + in_Vertex.zw);
+        vec2 UVs[] = vec2[](vec2(0, 1), vec2(1, 1), vec2(0, 0), vec2(1, 0));
+
+        frag_UV = UVs[gl_VertexID];
+        frag_Source = in_TextureSource;
+        frag_Color = in_TextColor;
+
+        gl_Position = vec4(Vertices[gl_VertexID], 0.0, 1.0) * u_ViewProjection;
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+in vec2 frag_UV;
+in vec4 frag_Source;
+in vec4 frag_Color;
+
+uniform vec2 u_TextureDim;
+uniform sampler2D u_Texture;
+
+out vec4 out_Color;
+
+void main()
+{
+        vec2 UVOffset = frag_Source.xy;
+        vec2 UVRange = frag_Source.zw;
+
+        vec2 SampleUV = (UVOffset + (frag_UV * UVRange)) / u_TextureDim;
+        vec4 Sampled = vec4(1.0, 1.0, 1.0, clamp(0, texture(u_Texture, SampleUV).r, 1));
+        out_Color = frag_Color * Sampled;
+}
+#endif
