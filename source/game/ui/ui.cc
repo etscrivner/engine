@@ -351,7 +351,7 @@ internal b32 DrawCheckbox(renderer *Renderer, app_context Ctx, texture_catalog *
   sprite CheckboxSprite = Sprite(UIIcons, V4(64, 0, 16, 16));
   if (*Value)
   {
-    CheckboxSprite = Sprite(UIIcons, V4(80, 0, 16, 16));
+    CheckboxSprite = Sprite(UIIcons, V4(82, 0, 16, 16));
   }
 
   b32 Pressed = DrawSpriteButton(Renderer, Ctx, CheckboxSprite, Rect, Style);
@@ -389,6 +389,7 @@ internal void UIStateInit(ui_state *UI, font *Font, texture_catalog *TextureCata
   UI->Renderer = Renderer;
   UI->Style = {
     32.0f, 32.0f,
+    V2(200, 200),
     V4(0.35, 0.35, 0.35, 1),
     V4(0.7, 0.198, 0.198, 1),
     {V4(0, 0, 0, 1), V4(0.298, 0.298, 0.298, 1), V4(1, 1, 1, 1), UI->Font},
@@ -413,6 +414,26 @@ internal void EndWidgets(ui_state *UI)
   UI->LastMousePos = UI->MousePos;
 }
 
+internal b32 WidgetMousePressed(app_context Ctx, mouse_button MouseButton)
+{
+  b32 Result = false;
+  if (!Ctx.Game->MouseInputConsumed)
+  {
+    Result = MousePressed(Ctx.Platform, MouseButton);
+  }
+  return(Result);
+}
+
+internal b32 WidgetMouseDown(app_context Ctx, mouse_button MouseButton)
+{
+  b32 Result = false;
+  if (!Ctx.Game->MouseInputConsumed)
+  {
+    Result = MouseDown(Ctx.Platform, MouseButton);
+  }
+  return(Result);
+}
+
 internal b32 WidgetWindowBegin(ui_state *UI, app_context Ctx, v4 Rect, char *Title, ui_window *Window)
 {
   i32 ParentID = (i32)FNV1A_HASH_INITIAL;
@@ -430,11 +451,17 @@ internal b32 WidgetWindowBegin(ui_state *UI, app_context Ctx, v4 Rect, char *Tit
     else if (UI->Active == ResizeID)
     {
       Window->SizeOffset += UI->MouseDelta;
+      Window->SizeOffset.X = Clamp(
+        Window->SizeOffset.X, UI->Style.MinWindowSize.Width - Rect.Width, Ctx.Game->RenderDim.Width
+      );
+      Window->SizeOffset.Y = Clamp(
+        Window->SizeOffset.Y, (f32)Ctx.Game->RenderDim.Height * -1, Rect.Height - UI->Style.MinWindowSize.Height
+      );
     }
 
     if (UI->Hot == TitleBarID)
     {
-      if (MouseDown(Ctx.Platform, MOUSE_BUTTON_left))
+      if (WidgetMouseDown(Ctx, MOUSE_BUTTON_left))
       {
         UI->NextActive = TitleBarID;
       }
@@ -445,7 +472,7 @@ internal b32 WidgetWindowBegin(ui_state *UI, app_context Ctx, v4 Rect, char *Tit
     }
     else if (UI->Hot == ResizeID)
     {
-      if (MouseDown(Ctx.Platform, MOUSE_BUTTON_left))
+      if (WidgetMouseDown(Ctx, MOUSE_BUTTON_left))
       {
         UI->NextActive = ResizeID;
       }
@@ -455,7 +482,7 @@ internal b32 WidgetWindowBegin(ui_state *UI, app_context Ctx, v4 Rect, char *Tit
       }
     }
 
-    Rect.Width += Window->SizeOffset.X;
+    Rect.Width = Round(Rect.Width + Window->SizeOffset.X);
     Rect.Height = Round(Rect.Height - Window->SizeOffset.Y);
     Rect.Y += Window->SizeOffset.Y;
 
@@ -570,7 +597,7 @@ internal b32 WidgetButton(ui_state *UI, app_context Ctx, v4 Rect, char *Text)
   if (UI->Hot == WidgetID)
   {
     Color = UI->Style.Button.HoverBackgroundColor;
-    if (MousePressed(Ctx.Platform, MOUSE_BUTTON_left))
+    if (WidgetMousePressed(Ctx, MOUSE_BUTTON_left))
     {
       Result = true;
       UI->Active = WidgetID;
@@ -645,7 +672,7 @@ internal b32 WidgetSpriteButton(ui_state *UI, app_context Ctx, sprite Sprite, v4
   if (UI->Hot == WidgetID)
   {
     Color = UI->Style.Button.HoverBackgroundColor;
-    if (MousePressed(Ctx.Platform, MOUSE_BUTTON_left))
+    if (WidgetMousePressed(Ctx, MOUSE_BUTTON_left))
     {
       Result = true;
       UI->Active = WidgetID;
@@ -673,14 +700,14 @@ internal b32 WidgetCheckbox(ui_state *UI, app_context Ctx, v4 Rect, char *Text, 
   sprite CheckboxSprite = Sprite(UIIcons, V4(64, 0, 16, 16));
   if (*Value)
   {
-    CheckboxSprite = Sprite(UIIcons, V4(80, 0, 16, 16));
+    CheckboxSprite = Sprite(UIIcons, V4(82, 0, 16, 16));
   }
 
   v4 SpriteRect = V4(
     UI->LayoutNext.X,
     UI->LayoutNext.Y,
-    UI->Style.ButtonHeight * 0.8,
-    UI->Style.ButtonHeight * 0.8
+    UI->Style.ButtonHeight,
+    UI->Style.ButtonHeight
   );
 
   b32 Pressed = WidgetSpriteButton(UI, Ctx, CheckboxSprite, SpriteRect);

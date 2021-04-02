@@ -175,6 +175,7 @@ typedef struct platform_state {
 #include "textures.h"
 #include "sounds.h"
 #include "mixer.h"
+#include "map.h"
 #include "ui/ui.h"
 #include "ui/debug_console.h"
 
@@ -197,6 +198,48 @@ typedef enum program_mode {
   PROGRAM_MODE_game,
   PROGRAM_MODE_editor
 } program_mode;
+
+typedef struct position {
+  v2 Pos;
+  v2 Rem;
+} position;
+
+typedef enum camera_state {
+  CAMERA_STATE_idle, // Camera is idle, not moving
+  CAMERA_STATE_moving, // Camera is moving
+  CAMERA_STATE_recentering, // Camera needs to be moved back to center.
+  CAMERA_STATE_MAX
+} camera_state;
+
+typedef struct camera {
+  camera_state State;
+  v2 RecenterStart;
+  v2 RecenterTarget;
+  v2 RecenterStartOffset;
+  f32 RecenterProgress;
+  u64 RecenterTime;
+  b32 RecenterOn;
+  
+  // ScreenOffset defines the x and y offset of everything drawn. This is
+  // defined in pixels from the player center and can be used, for instance, to
+  // make the game view show slightly below ground etc.
+  v2 ScreenOffset;
+  // DeadZone is the area inside of the center of the player camera within
+  // which the player can move without the camera moving with them. It is
+  // defined by a width and height. Once the player hits the edge of this area
+  // the camera begins moving and continues moving.
+  v2 DeadZone;
+  // LeftDeadzone indicates whether or not the deadzone was left by the player
+  // by moving. Used to help dedicate when it is time to recenter the deadzone
+  // when the player stops.
+  b32 LeftDeadzone;
+  // Offset is the current offset of the camera based on player
+  // movement. Initially 0 and updated based on player movement.
+  v2 Offset;
+  // The starting offset (the initial player position on a given screen). Used
+  // to determine how much to move the camera.
+  v2 StartOffset;
+} camera;
 
 // game_state defines the state that the game itself stores
 typedef struct game_state {
@@ -239,8 +282,9 @@ typedef struct game_state {
   //
   // Below here is the working area for global game state
   // 
-  
-  v2 PlayerP;
+
+  position PlayerP;  // Displacement
+  v2 dPlayerP; // Velocity
 
   f32 FPS;
   i32 MCPF;
@@ -268,6 +312,13 @@ typedef struct game_state {
   ui_state UIState;
   ui_window Window[3];
   b32 Checked;
+
+  map Map;
+  map_tileset Tileset;
+  b32 ShowMapDebug;
+
+  camera Camera;
+  b32 ShowCameraDebug;
 } game_state;
 
 typedef struct app_context {

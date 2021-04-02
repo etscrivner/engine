@@ -19,6 +19,14 @@ enum {
   CONSOLE_COLOR_MAX
 };
 
+typedef struct console console;
+typedef void console_command_fn(console*, app_context, char*);
+
+typedef struct console_command {
+  char *Command;
+  console_command_fn *Cmd;
+} console_command;
+
 typedef struct console_style {
   f32 ThumbPadding;
   v4 Colors[CONSOLE_COLOR_MAX];
@@ -62,6 +70,7 @@ internal void ConsoleCreate(console *Console, font *Font, memory_arena *Transien
 // Is the console currently being displayed and actively processing input?
 internal b32 ConsoleIsActive(console *Console);
 internal void ConsoleLog(console *Console, const char *Text);
+internal void ConsoleLogf(console *Console, const char *Fmt, ...);
 internal void ConsoleUpdate(console *Console, app_context Ctx, u64 DeltaTimeMicros);
 internal void ConsoleRender(console *Console, renderer *Renderer);
 

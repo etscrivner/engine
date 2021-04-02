@@ -13,6 +13,7 @@
 #define RENDERER_MVP_MATRIX_STACK_MAX 16
 
 #define RENDERER_LINES_MAX 16384
+#define RENDERER_UNFILLED_RECT_MAX 8192
 #define RENDERER_FILLED_RECT_MAX 16384
 #define RENDERER_FILLED_CIRCLE_MAX 16384
 #define RENDERER_TEXTURED_QUADS_MAX 16384
@@ -21,6 +22,7 @@
 typedef enum render_request_type {
   RENDER_REQUEST_null,
   RENDER_REQUEST_line,
+  RENDER_REQUEST_unfilled_rect,
   RENDER_REQUEST_filled_rect,
   RENDER_REQUEST_filled_circle,
   RENDER_REQUEST_textured_quad,
@@ -29,6 +31,15 @@ typedef enum render_request_type {
   RENDER_REQUEST_set_mvp_matrix,
   RENDER_REQUEST_MAX
 } render_request_type;
+
+typedef enum render_flags {
+  RENDER_FLAG_none = (1 << 0),
+  // Render the given object take the coordinates given as specifying a center.
+  RENDER_FLAG_centered = (1 << 1),
+  // Render the given textured quad using a styleized fat-pixel shader
+  RENDER_FLAG_fat_pixel = (1 << 2),
+  RENDER_FLAG_MAX
+} render_flags;
 
 typedef enum framebuffer_texture_format {
   FRAMEBUFFER_TEXTURE_FORMAT_invalid,
@@ -73,8 +84,14 @@ typedef struct render_request {
   
   union {
     struct {
+      u32 NumPoints;
+      v4 Color;
+    } LineLoop;
+
+    struct {
       GLuint TextureID;
       v2 Dim;
+      b32 FatPixel;
     } TexturedQuad;
     
     struct {
@@ -107,6 +124,12 @@ typedef struct renderer {
   // NOTE: x,y  x,y  r,g,b,a
 #define RENDERER_BYTES_PER_LINE (sizeof(f32) * 8)
   u8 LineInstanceData[RENDERER_LINES_MAX * RENDERER_BYTES_PER_LINE];
+
+  indexed_render_buffer UnfilledRectBuffer;
+  u32 UnfilledRectInstanceDataPos;
+  // NOTE: x,y x,y x,y x,y r,g,b,a
+#define RENDERER_BYTES_PER_UNFILLED_RECT (sizeof(f32) * 12)
+  u8 UnfilledRectInstanceData[RENDERER_UNFILLED_RECT_MAX * RENDERER_BYTES_PER_UNFILLED_RECT];
   
   indexed_render_buffer FilledRectBuffer;
   u32 FilledRectInstanceDataPos;
@@ -141,6 +164,9 @@ typedef struct renderer {
   m4x4 MVPMatrix;
   u32 MVPStackCount;
   m4x4 MVPStack[RENDERER_MVP_MATRIX_STACK_MAX];
+
+  i32 LastFrameDrawCalls;
+  i32 CurrentFrameDrawCalls;
 } renderer;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -180,11 +206,13 @@ internal void Renderer2DRightHanded(renderer *Renderer, v2i Dim);
 
 internal void RendererFinishActiveRequest(renderer *Renderer);
 internal void RendererPushLine(renderer *Renderer, u32 Flags, v2 Start, v2 End, v4 Color);
-internal inline void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color);
+internal void RendererPushUnfilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color);
+internal void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color);
 internal void RendererPushFilledCircle(renderer *Renderer, u32 Flags, v2 Center, f32 Radius, v4 Color);
 internal void RendererPushTexturedQuad(renderer* Renderer, u32 Flags, GLuint TextureID, v2 TextureDim, v4 SourceRect, v4 DestRect, v4 Color);
-internal inline void RendererPushTexture(renderer *Renderer, u32 Flags, texture Texture, v4 SourceRect, v4 DestRect, v4 Color);
+internal void RendererPushTexture(renderer *Renderer, u32 Flags, texture Texture, v4 SourceRect, v4 DestRect, v4 Color);
 internal void RendererPushText(renderer *Renderer, u32 Flags, font *Font, const char* Text, v2 Pos, v4 Color);
+internal void RendererPushSprintf(renderer * Renderer, u32 Flags, font *Font, v2 Pos, v4 Color, const char *Fmt, ...);
 
 // Clipping
 internal void RendererPushClip(renderer *Renderer, v4 ClipRect);

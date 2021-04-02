@@ -64,6 +64,8 @@ LIBRARY_FILES=source/common/language_layer.h \
         source/game/sounds.cc \
 	source/game/mixer.h \
         source/game/mixer.cc \
+	source/game/map.h \
+	source/game/map.cc \
         source/game/ui/ui.h \
         source/game/ui/ui.cc \
 	source/game/ui/debug_console.h \
@@ -79,7 +81,7 @@ ifeq ($(OS),linux)
   # OpenGL (Hardware-accelerated Graphics)
   # ALSA (Audio)
   LDFLAGS+=-lm -ldl -lfreetype -lpthread \
-	$(shell pkg-config x11 --libs) $(shell pkg-config xinerama --libs) \
+	$(shell pkg-config x11 --libs) $(shell pkg-config xrandr --libs) \
 	$(shell pkg-config gl --libs) $(shell pkg-config glu --libs) $(shell pkg-config glx --libs) \
 	$(shell pkg-config alsa --libs)
   CXXFLAGS_LIBRARY=-shared -fPIC

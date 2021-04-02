@@ -43,20 +43,20 @@ internal b32 ShaderCatalogAdd(shader_catalog *Catalog, platform_state *Platform,
     Platform->Interface.FreeEntireFile(&File);
     
     if (Entry->Program == 0) {
-      Platform->Interface.Log("error: failed to load shader: '%s'\n", ShaderFile);
+      Platform->Interface.Log("Shaders: error: failed to compile: %s\n", ShaderFile);
       Result = false;
     } else {
-      Platform->Interface.Log("info: successfully loaded shader: '%s' (%d)\n", ShaderFile, Entry->Program);
+      Platform->Interface.Log("Shaders: successfully compiled: %s (%d)\n", ShaderFile, Entry->Program);
       Entry->WatcherHandle = WatchedFileSetAdd(&Catalog->Watcher, ShaderFile);
       if (Entry->WatcherHandle == -1) {
-        Platform->Interface.Log("error: failed to watch shader '%s'\n", ShaderFile);
+        Platform->Interface.Log("error: failed to watch shader %s\n", ShaderFile);
         Result = false;
       } else {
         Result = true;
       }
     }
   } else {
-    Platform->Interface.Log("error: failed to load shader '%s\n", ShaderFile);
+    Platform->Interface.Log("Shaders: error: failed to load shader %s\n", ShaderFile);
     Result = false;
   }
   
@@ -160,12 +160,12 @@ internal void LoadAndCompileShaders(platform_state *Platform, scoped_arena *Scop
   
   if (Shader->Program == 0)
   {
-    Platform->Interface.Log("error: failed to load shader:'%s'\n",
+    Platform->Interface.Log("Shader: error: failed to compile: '%s'\n",
                             Shader->Internal.ShaderFileName);
   }
   else
   {
-    Platform->Interface.Log("info: successfully loaded shader:'%s'\n",
+    Platform->Interface.Log("Shader: compiled: '%s'\n",
                             Shader->Internal.ShaderFileName);
   }
 }

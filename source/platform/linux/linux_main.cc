@@ -14,9 +14,6 @@
 // Godot Engine X11 layer:
 // https://github.com/godotengine/godot/blob/67682b35b0e3057b2d630592815cd84596e741e3/platform/x11/os_x11.cpp
 
-// TODO(eric): Explore using XCB instead of Xlib (some perf benefits because
-// not all calls are synchronous in XCB)-- is it worth it?
-
 // X11 (Window Manager)
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -24,7 +21,6 @@
 
 // TODO: Enumerate displays and show window on selected display rather than
 // default display.
-#include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrandr.h>
 
 // OpenGL (Hardware-accelerated Graphics)
@@ -184,7 +180,7 @@ internal u64 LinuxGetTimeMicros(void)
   
   if (clock_gettime(LINUX_MONOTONIC_CLOCK, &TimeSpec) == 0)
   {
-    u64 SecsInMicros = TimeSpec.tv_sec * 1000000.0f; // Converts seconds to microseconds
+    u64 SecsInMicros = TimeSpec.tv_sec * 1000000; // Converts seconds to microseconds
     u64 NsInMicros = TimeSpec.tv_nsec / 1000;
     Result = SecsInMicros + NsInMicros;
   }
@@ -318,6 +314,7 @@ XIC GlobalXIC = None;
 static b32 GlobalSelectionWaiting = false;
 static platform_state GlobalPlatform = {};
 static u32 GlobalTextPos = 0;
+static Cursor EmptyCursor = None;
 
 enum
 {
@@ -434,6 +431,32 @@ internal void X11ToggleAllowResizing(b32 AllowResizing)
 
   XSetWMNormalHints(GlobalDisplay, GlobalWindow, NoResizingHints);
   XFree(NoResizingHints);
+}
+
+internal void X11ShowCursor(b32 Show)
+{
+  if (Show)
+  {
+    XDefineCursor(GlobalDisplay, GlobalWindow, None);
+  }
+  else
+  {
+    if (EmptyCursor == None)
+    {
+      char Data[1] = {};
+      XColor Color = {};
+      Pixmap CursorPix = {};
+
+      CursorPix = XCreateBitmapFromData(GlobalDisplay, DefaultRootWindow(GlobalDisplay), Data, 1, 1);
+      if (CursorPix)
+      {
+        EmptyCursor = XCreatePixmapCursor(GlobalDisplay, CursorPix, CursorPix, &Color, &Color, 0, 0);
+        XFreePixmap(GlobalDisplay, CursorPix);
+      }
+    }
+
+    XDefineCursor(GlobalDisplay, GlobalWindow, EmptyCursor);
+  }
 }
 
 internal b32 X11PumpEvents(platform_state *Platform)
@@ -678,11 +701,13 @@ internal b32 X11PumpEvents(platform_state *Platform)
       break;
       case EnterNotify:
       {
+        X11ShowCursor(false);
         Platform->Input.InFocus = true;
       }
       break;
       case LeaveNotify:
       {
+        X11ShowCursor(true);
         Platform->Input.InFocus = false;
       }
       break;
@@ -840,8 +865,7 @@ internal char* LinuxGetClipboardText(scoped_arena* ScopedArena)
   unsigned long NumBytes, Overflow;
   u8 *Source = NULL;
   
-  if (XGetWindowProperty(
-                         GlobalDisplay, Owner, Selection, 0, INT_MAX/4, False, UTF8StringAtom,
+  if (XGetWindowProperty(GlobalDisplay, Owner, Selection, 0, INT_MAX/4, False, UTF8StringAtom,
                          &ReturnType, &ReturnFormat, &NumBytes, &Overflow, &Source) == Success)
   {
     if (ReturnType == UTF8StringAtom)
@@ -1047,6 +1071,13 @@ internal void PlatformDestroy(platform_state* Platform)
 
 ///////////////////////////////////////////////////////////////////////////////
 
+typedef struct display_info {
+  i32 XOffset;
+  i32 YOffset;
+  u32 Width;
+  u32 Height;
+} display_info;
+
 int main(int argc, char* argv[]) {
   i32 ExitCode = 0;
   game_library GameLibrary = {};
@@ -1087,6 +1118,27 @@ int main(int argc, char* argv[]) {
     printf("\tDisplay: %s (%d)\n", XDisplayString(GlobalDisplay), ScreenCount(GlobalDisplay));
     printf("\tVendor:  %s\n", XServerVendor(GlobalDisplay));
     printf("\tRelease: %d\n", XVendorRelease(GlobalDisplay));
+
+    // Gather info on the default display for window centering
+    display_info DefaultDisplayInfo;
+    {
+      auto Primary = XRRGetOutputPrimary(GlobalDisplay, RootWindow(GlobalDisplay, DefaultScreen(GlobalDisplay)));
+      XRRScreenResources *Resources = XRRGetScreenResourcesCurrent(GlobalDisplay, RootWindow(GlobalDisplay, DefaultScreen(GlobalDisplay)));
+      foreach(I, Resources->noutput) {
+        auto OutputInfo = XRRGetOutputInfo(GlobalDisplay, Resources, Resources->outputs[I]);
+        if (!OutputInfo || !OutputInfo->crtc || OutputInfo->connection == RR_Disconnected) {
+          XRRFreeOutputInfo(OutputInfo);
+          continue;
+        }
+        
+        auto CRTCInfo = XRRGetCrtcInfo(GlobalDisplay, Resources, OutputInfo->crtc);
+        DefaultDisplayInfo = {CRTCInfo->x, CRTCInfo->y, CRTCInfo->width, CRTCInfo->height};
+        XRRFreeCrtcInfo(CRTCInfo);
+        XRRFreeOutputInfo(OutputInfo);
+        break;
+      }
+      XRRFreeScreenResources(Resources);
+    }
     
     X11LoadAtoms(GlobalDisplay);
     
@@ -1194,23 +1246,34 @@ int main(int argc, char* argv[]) {
       XMapRaised(GlobalDisplay, GlobalWindow);
       XSetWMProtocols(GlobalDisplay, GlobalWindow, &WMDeleteWindowAtom, 1);
       XSync(GlobalDisplay, False);
+
+      // Center window on the default display
+      XMoveWindow(
+        GlobalDisplay,
+        GlobalWindow,
+        // Calculate gap between the center of the window and the center of the
+        // display. Offset the windows left edge by this amount to center it.
+        DefaultDisplayInfo.XOffset + (DefaultDisplayInfo.Width/2 - DEFAULT_WINDOW_WIDTH/2),
+        DefaultDisplayInfo.YOffset + (DefaultDisplayInfo.Height/2 - DEFAULT_WINDOW_HEIGHT/2)
+      );
       
       // Load extensions
+      printf("OpenGL:\n");
       const char* GLXExtensionList = glXQueryExtensionsString(GlobalDisplay, DefaultScreen);
       if (ExtensionInList(GLXExtensionList, "GLX_EXT_swap_control"))
       {
-        printf("info: Found GLX_EXT_swap_control\n");
+        printf("\tVSync:    GLX_EXT_swap_control\n");
         GLXLoadRequiredExtension(glXSwapIntervalEXT, SWAPINTERVALEXT, GLX_EXT_swap_control);
       }
       else if (ExtensionInList(GLXExtensionList, "GLX_MESA_swap_control"))
       {
-        printf("info: Found GLX_MESA_swap_control\n");
+        printf("\tVSync:    GLX_MESA_swap_control\n");
         GLXLoadRequiredExtension(glXSwapIntervalMESA, SWAPINTERVALMESA, GLX_MESA_swap_control);
       }
       else if (ExtensionInList(GLXExtensionList, "GLX_SGI_swap_control"))
       {
         // GLX_SGI_swap_control does not support setting VSync.
-        fprintf(stderr, "warning: No VSync, only GLX_SGI_swap_control available.\n");
+        fprintf(stderr, "\tVSync:    No VSync, only GLX_SGI_swap_control available.\n");
       }
 
       GLXLoadRequiredExtension(glXCreateContextAttribsARB, CREATECONTEXTATTRIBSARB, GLX_ARB_create_context);
@@ -1238,7 +1301,6 @@ int main(int argc, char* argv[]) {
         XSync(GlobalDisplay, False);
         
         // Print basic OpenGL driver info
-        printf("OpenGL:\n");
         printf("\tVendor:   %s\n", glGetString(GL_VENDOR));
         printf("\tRenderer: %s\n", glGetString(GL_RENDERER));
         printf("\tVersion:  %s\n", glGetString(GL_VERSION));
@@ -1283,6 +1345,7 @@ int main(int argc, char* argv[]) {
             Info->ExitFlag = &WorkerThreadExitFlag;
             Info->Queue = &Queue;
             Info->OpenGLContext = glXCreateContextAttribsARB(GlobalDisplay, BestFBC, GLCtx, True, NULL /*ContextAttribs*/);
+            printf("Worker: Thread %d: Starting\n", I);
             WorkerThread[I] = thread_create(WorkerThreadLoop, Info, THREAD_STACK_SIZE_DEFAULT);
           }
 
@@ -1376,7 +1439,7 @@ int main(int argc, char* argv[]) {
           thread_atomic_int_store(&WorkerThreadExitFlag, 1);
           foreach(I, WORKER_THREAD_COUNT) {
             int ReturnValue = thread_join(WorkerThread[I]);
-            printf("Worker Thread %d: Exit Code %d\n", I, ReturnValue);
+            printf("Worker: Thread %d: Exit Code %d\n", I, ReturnValue);
             thread_destroy(WorkerThread[I]);
           }
           
@@ -1416,7 +1479,12 @@ int main(int argc, char* argv[]) {
       fprintf(stderr, "GLX error: Failed to find suitable visual.\n");
       ExitCode = 1;
     }
-    
+
+    if (EmptyCursor != None) {
+      XFreeCursor(GlobalDisplay, EmptyCursor);
+      EmptyCursor = None;
+    }
+
     XCloseDisplay(GlobalDisplay);
   }
   else

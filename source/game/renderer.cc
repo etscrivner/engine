@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include <GL/glext.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 // types
@@ -228,6 +229,17 @@ internal void RendererCreate(platform_state *Platform, renderer *Renderer, shade
       IndexedRenderBufferSetAttrib(&Renderer->LineBuffer, 1, 2, sizeof(v2)); // EndPos (x,y)
       IndexedRenderBufferSetAttrib(&Renderer->LineBuffer, 2, 4, 2*sizeof(v2)); // Color (r,g,b,a)
     }
+
+    // Unfilled Rects
+    {
+      Renderer->UnfilledRectBuffer = IndexedRenderBufferCreate(RENDERER_UNFILLED_RECT_MAX, RENDERER_BYTES_PER_UNFILLED_RECT, Renderer->UnfilledRectInstanceData);
+
+      IndexedRenderBufferSetAttrib(&Renderer->UnfilledRectBuffer, 0, 2, 0); // V0 (x, y)
+      IndexedRenderBufferSetAttrib(&Renderer->UnfilledRectBuffer, 1, 2, sizeof(v2)); // V1 (x, y)
+      IndexedRenderBufferSetAttrib(&Renderer->UnfilledRectBuffer, 2, 2, 2*sizeof(v2)); // V2 (x, y)
+      IndexedRenderBufferSetAttrib(&Renderer->UnfilledRectBuffer, 3, 2, 3*sizeof(v2)); // V3 (x, y)
+      IndexedRenderBufferSetAttrib(&Renderer->UnfilledRectBuffer, 4, 4, 4*sizeof(v2)); // V4 (r, g, b, a)
+    }
     
     // Filled Rects
     {
@@ -293,6 +305,7 @@ internal void RendererDestroy(renderer *Renderer)
   // Cleanup instanced rendering
   {
     IndexedRenderBufferDestroy(&Renderer->LineBuffer);
+    IndexedRenderBufferDestroy(&Renderer->UnfilledRectBuffer);
     IndexedRenderBufferDestroy(&Renderer->FilledRectBuffer);
     IndexedRenderBufferDestroy(&Renderer->FilledCircleBuffer);
     IndexedRenderBufferDestroy(&Renderer->TexturedQuadBuffer);
@@ -315,11 +328,13 @@ internal void RendererBeginFrame(renderer *Renderer, platform_state* Platform, v
     Renderer->NumRequests = 0;
     Renderer->ActiveRequest.Type = RENDER_REQUEST_null;
     Renderer->ActiveRequest.Flags = 0;
+    Renderer->CurrentFrameDrawCalls = 0;
   }
   
   // Instanced rendering
   {
     Renderer->LineInstanceDataPos = 0;
+    Renderer->UnfilledRectInstanceDataPos = 0;
     Renderer->FilledRectInstanceDataPos = 0;
     Renderer->FilledCircleInstanceDataPos = 0;
     Renderer->TexturedQuadInstanceDataPos = 0;
@@ -341,7 +356,8 @@ internal void RendererBeginFrame(renderer *Renderer, platform_state* Platform, v
   Renderer->Dim = Dim;
 }
 
-// TODO: Merge this into RendererEndFrame once FXAA and Tone Mapping pass are also moved in.
+// TODO: Merge this into RendererEndFrame once FXAA and Tone Mapping pass are
+// also moved in.
 internal void RendererFlush(renderer* Renderer)
 {
   RendererFinishActiveRequest(Renderer);
@@ -355,6 +371,7 @@ internal void RendererFlush(renderer* Renderer)
   foreach(I, Renderer->NumRequests)
   {
     render_request *Request = Renderer->Request + I;
+    Renderer->CurrentFrameDrawCalls++;
     
     switch (Request->Type)
     {
@@ -381,6 +398,29 @@ internal void RendererFlush(renderer* Renderer)
         // NOTE: Always run glUseProgram(0) when done with a shader, otherwise
         // when the next shader is used it will cause a recompilation penalty
         // due to GL state mismatch.
+        glUseProgram(0);
+      }
+      break;
+      case RENDER_REQUEST_unfilled_rect:
+      {
+        // Upload data
+        {
+          glBindBuffer(GL_ARRAY_BUFFER, Renderer->UnfilledRectBuffer.VBO);
+          glBufferSubData(GL_ARRAY_BUFFER, 0, Request->DataSize, Renderer->UnfilledRectInstanceData + Request->DataOffset);
+          glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
+
+        u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "unfilled_rect");
+        glBindVertexArray(Renderer->UnfilledRectBuffer.VAO);
+        {
+          glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
+          
+          GLint First = 0;
+          GLsizei Count = 6;
+          GLsizei InstanceCount = Request->DataSize / RENDERER_BYTES_PER_UNFILLED_RECT;
+          glDrawArraysInstanced(GL_LINE_LOOP, First, Count, InstanceCount);
+        }
+        glBindVertexArray(0);
         glUseProgram(0);
       }
       break;
@@ -439,7 +479,14 @@ internal void RendererFlush(renderer* Renderer)
           glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
         
-        u32 Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "textured_quad");
+        u32 Shader;
+        if (Request->TexturedQuad.FatPixel) {
+          //Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "textured_quad_fat_pixel");
+          Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "textured_quad");
+        } else {
+          Shader = ShaderCatalogUse(Renderer->ShaderCatalog, "textured_quad");
+        }
+
         glBindVertexArray(Renderer->TexturedQuadBuffer.VAO);
         {
           glUniformMatrix4fv(glGetUniformLocation(Shader, "u_ViewProjection"), 1, GL_FALSE, (f32*)MVPMatrix.E);
@@ -447,9 +494,20 @@ internal void RendererFlush(renderer* Renderer)
           
           glActiveTexture(GL_TEXTURE0 + Request->TexturedQuad.TextureID);
           glBindTexture(GL_TEXTURE_2D, Request->TexturedQuad.TextureID);
-          // NOTE: For now, use GL_NEAREST to get a nice fat-pixel effect when scaling up.
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          if (Request->TexturedQuad.FatPixel) {
+            // NOTE: For now, use GL_NEAREST to get a nice fat-pixel effect
+            // when scaling up.
+#if 1
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+#else
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+#endif
+          } else {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          }
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
           
@@ -507,11 +565,13 @@ internal void RendererFlush(renderer* Renderer)
           (GLint)Request->Clip.Rect.Width,
           (GLint)Request->Clip.Rect.Height
         );
+        Renderer->CurrentFrameDrawCalls--;
       }
       break;
       case RENDER_REQUEST_set_mvp_matrix:
       {
         MVPMatrix = Request->MVPMatrix.MVP;
+        Renderer->CurrentFrameDrawCalls--;
       }
       break;
       default:
@@ -558,6 +618,8 @@ internal void RendererEndFrame(renderer *Renderer)
   {
     fprintf(stderr, "\n[RendererEndFrame] OpenGL Error %i: %s\n", (int)Error, gluErrorString(Error));
   }
+
+  Renderer->LastFrameDrawCalls = Renderer->CurrentFrameDrawCalls;
 }
 
 internal void RendererClear(renderer *Renderer, v4 ClearColor)
@@ -618,7 +680,51 @@ internal void RendererPushLine(renderer *Renderer, u32 Flags, v2 Start, v2 End, 
   Renderer->LineInstanceDataPos += RENDERER_BYTES_PER_LINE;
 }
 
-internal inline void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color)
+internal void RendererPushUnfilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color)
+{
+  Assert(Renderer->UnfilledRectInstanceDataPos + RENDERER_BYTES_PER_UNFILLED_RECT <= sizeof(Renderer->UnfilledRectInstanceData));
+  render_request_type RequestType = RENDER_REQUEST_unfilled_rect;
+  
+  if (Renderer->ActiveRequest.Type != RequestType || Renderer->ActiveRequest.Flags != Flags)
+  {
+    RendererFinishActiveRequest(Renderer);
+    Renderer->ActiveRequest.Type = RequestType;
+    Renderer->ActiveRequest.Flags = Flags;
+    Renderer->ActiveRequest.DataOffset = Renderer->UnfilledRectInstanceDataPos;
+    Renderer->ActiveRequest.DataSize = RENDERER_BYTES_PER_UNFILLED_RECT;
+  }
+  else
+  {
+    Renderer->ActiveRequest.DataSize += RENDERER_BYTES_PER_UNFILLED_RECT;
+  }
+
+  // Use the (x,y) coordinates from the rect as a center coordinate and specify
+  // the vertices appropriately. We don't count this as an active flag since it
+  // does not affect the way things will be rendered.
+  if (Flags & RENDER_FLAG_centered)
+  {
+    v2 Pos = Rect.XY;
+    Rect.X = Pos.X - (Rect.Width / 2.0f);
+    Rect.Y = Pos.Y - (Rect.Height / 2.0f);
+  }
+  
+  f32 *Data = (f32*)(Renderer->UnfilledRectInstanceData + Renderer->UnfilledRectInstanceDataPos);
+  Data[0] = Rect.X;
+  Data[1] = Rect.Y;
+  Data[2] = Rect.X + Rect.Width;
+  Data[3] = Rect.Y;
+  Data[4] = Rect.X + Rect.Width;
+  Data[5] = Rect.Y + Rect.Height;
+  Data[6] = Rect.X;
+  Data[7] = Rect.Y + Rect.Height;
+  Data[8] = Color.R;
+  Data[9] = Color.G;
+  Data[10] = Color.B;
+  Data[11] = Color.A;
+  Renderer->UnfilledRectInstanceDataPos += RENDERER_BYTES_PER_UNFILLED_RECT;
+}
+
+internal void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Rect, v4 Color)
 {
   Assert(Renderer->FilledRectInstanceDataPos + RENDERER_BYTES_PER_FILLED_RECT <= sizeof(Renderer->FilledRectInstanceData));
   render_request_type RequestType = RENDER_REQUEST_filled_rect;
@@ -634,6 +740,16 @@ internal inline void RendererPushFilledRect(renderer *Renderer, u32 Flags, v4 Re
   else
   {
     Renderer->ActiveRequest.DataSize += RENDERER_BYTES_PER_FILLED_RECT;
+  }
+
+  // Use the (x,y) coordinates from the rect as a center coordinate and specify
+  // the vertices appropriately. We don't count this as an active flag since it
+  // does not affect the way things will be rendered.
+  if (Flags & RENDER_FLAG_centered)
+  {
+    v2 Pos = Rect.XY;
+    Rect.X = Pos.X - (Rect.Width / 2.0f);
+    Rect.Y = Pos.Y - (Rect.Height / 2.0f);
   }
   
   f32 *Data = (f32*)(Renderer->FilledRectInstanceData + Renderer->FilledRectInstanceDataPos);
@@ -716,6 +832,12 @@ internal inline void RendererPushTexturedQuad(renderer *Renderer, u32 Flags, GLu
     Renderer->ActiveRequest.DataSize = RENDERER_BYTES_PER_TEXTURED_QUAD;
     Renderer->ActiveRequest.TexturedQuad.TextureID = TextureID;
     Renderer->ActiveRequest.TexturedQuad.Dim = TextureDim;
+
+    if (Flags & RENDER_FLAG_fat_pixel) {
+      Renderer->ActiveRequest.TexturedQuad.FatPixel = true;
+    } else {
+      Renderer->ActiveRequest.TexturedQuad.FatPixel = false;
+    }
   }
   else
   {
@@ -854,6 +976,22 @@ internal void RendererPushText(renderer *Renderer, u32 Flags, font *Font, const 
   }
 }
 
+internal void RendererPushSprintf(renderer *Renderer, u32 Flags, font *Font, v2 Pos, v4 Color, const char *Fmt, ...)
+{
+  local_persist char Output[512];
+
+  // Format string
+  {
+    va_list List;
+    va_start(List, Fmt);
+    vsnprintf(Output, ArrayCount(Output), Fmt, List);
+    va_end(List);
+  }
+
+  // Display string
+  RendererPushText(Renderer, Flags, Font, Output, Pos, Color);
+}
+
 internal void RendererPushClip(renderer *Renderer, v4 ClipRect)
 {
   RendererFinishActiveRequest(Renderer);
@@ -923,30 +1061,30 @@ internal void Renderer2DRightHanded(renderer *Renderer, v2u Dim)
 ///////////////////////////////////////////////////////////////////////////////
 
 const glenum_to_string DebugMessageSourceString[] = {
-  { .Key = GL_DEBUG_SOURCE_API, .Value = "API" },
-  { .Key = GL_DEBUG_SOURCE_WINDOW_SYSTEM, .Value = "Window System" },
+  { .Key = GL_DEBUG_SOURCE_API,             .Value = "API"             },
+  { .Key = GL_DEBUG_SOURCE_WINDOW_SYSTEM,   .Value = "Window System"   },
   { .Key = GL_DEBUG_SOURCE_SHADER_COMPILER, .Value = "Shader Compiler" },
-  { .Key = GL_DEBUG_SOURCE_THIRD_PARTY, .Value = "Third Party" },
-  { .Key = GL_DEBUG_SOURCE_APPLICATION, .Value = "Application" },
+  { .Key = GL_DEBUG_SOURCE_THIRD_PARTY,     .Value = "Third Party"     },
+  { .Key = GL_DEBUG_SOURCE_APPLICATION,     .Value = "Application"     },
 };
 
 const glenum_to_string DebugMessageTypeString[] = {
-  { .Key = GL_DEBUG_TYPE_ERROR, .Value = "Error" },
+  { .Key = GL_DEBUG_TYPE_ERROR,               .Value = "Error"               },
   { .Key = GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR, .Value = "Deprecated Behavior" },
-  { .Key = GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR, .Value = "Undefined Behavior" },
-  { .Key = GL_DEBUG_TYPE_PORTABILITY, .Value = "Portability" },
-  { .Key = GL_DEBUG_TYPE_PERFORMANCE, .Value = "Performance" },
-  { .Key = GL_DEBUG_TYPE_MARKER, .Value = "Marker" },
-  { .Key = GL_DEBUG_TYPE_PUSH_GROUP, .Value = "Push Group" },
-  { .Key = GL_DEBUG_TYPE_POP_GROUP, .Value = "Pop Group" },
-  { .Key = GL_DEBUG_TYPE_OTHER, .Value = "Other" },
+  { .Key = GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR,  .Value = "Undefined Behavior"  },
+  { .Key = GL_DEBUG_TYPE_PORTABILITY,         .Value = "Portability"         },
+  { .Key = GL_DEBUG_TYPE_PERFORMANCE,         .Value = "Performance"         },
+  { .Key = GL_DEBUG_TYPE_MARKER,              .Value = "Marker"              },
+  { .Key = GL_DEBUG_TYPE_PUSH_GROUP,          .Value = "Push Group"          },
+  { .Key = GL_DEBUG_TYPE_POP_GROUP,           .Value = "Pop Group"           },
+  { .Key = GL_DEBUG_TYPE_OTHER,               .Value = "Other"               },
 };
 
 const glenum_to_string DebugMessageSeverityString[] = {
-  { .Key = GL_DEBUG_SEVERITY_LOW, .Value = "Low" },
-  { .Key = GL_DEBUG_SEVERITY_MEDIUM, .Value = "Medium" },
-  { .Key = GL_DEBUG_SEVERITY_HIGH, "High" },
-  { .Key = GL_DEBUG_SEVERITY_NOTIFICATION, "Notification" },
+  { .Key = GL_DEBUG_SEVERITY_LOW,          .Value = "Low"          },
+  { .Key = GL_DEBUG_SEVERITY_MEDIUM,       .Value = "Medium"       },
+  { .Key = GL_DEBUG_SEVERITY_HIGH,         .Value = "High"         },
+  { .Key = GL_DEBUG_SEVERITY_NOTIFICATION, .Value = "Notification" },
 };
 
 internal const char* GetEnumValue(glenum_to_string *Enum, u32 EnumSize, GLenum Key)
@@ -974,11 +1112,11 @@ internal void OpenGLDebugMessageCallback(
                                          const void *UserParam
                                          )
 {
-  fprintf(stderr, "[%s.%s.%d %s]: %s\n",
+  fprintf(stderr, "Renderer: [%s %s.%s.%d]:\n%s\n",
+          GLEnumName(DebugMessageSeverityString, Severity),
           GLEnumName(DebugMessageSourceString, Source),
           GLEnumName(DebugMessageTypeString, Type),
           ID,
-          GLEnumName(DebugMessageSeverityString, Severity),
           Message);
 }
 

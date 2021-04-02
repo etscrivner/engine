@@ -2,6 +2,7 @@
 #define LANGUAGE_LAYER_H
 
 #include <assert.h>
+#include <stdlib.h>
 #include <inttypes.h>
 #include <math.h>
 #include <string.h>
@@ -35,6 +36,8 @@ typedef i32 b32;
 #define Megabytes(Value) (Kilobytes(Value)*1024LL)
 #define Gigabytes(Value) (Megabytes(Value)*1024LL)
 
+#define Microsecs(ValueSecs) ((ValueSecs)*1000000LL)
+
 #define Assert(X) assert(X)
 
 #define PI 3.14159265358979
@@ -49,11 +52,12 @@ typedef i32 b32;
 
 #define Min(A, B) (((A) < (B)) ? (A) : (B))
 #define Max(A, B) (((A) > (B)) ? (A) : (B))
+#define Sign(A) (((A) < 0) ? (-1) : (1))
 #define Sqrt sqrt
 #define SinF sinf
 #define CosF cosf
 #define FModF fmodf
-#define AbsoluteValue abs
+#define AbsoluteValue fabs
 #define MemoryCopy memcpy
 
 #define Align8(Value) (((Value) + 7) & ~7)
@@ -121,14 +125,14 @@ internal inline f32 Truncate(f32 Value) {
 }
 
 internal inline f32 Lerp(f32 Start, f32 End, f32 Weight) {
-  f32 Result = (1.0f - Weight)*Start + Weight*End;
+  f32 Result = Start*(1.0f - Weight) + End*Weight;
   return(Result);
 }
 
 inline f32 CosLerp(f32 Start, f32 Stop, f32 Weight)
 {
   f32 CosWeight = (1.0f - cosf(Weight * PI)) / 2.0f;
-  return Start*(1.0f - CosWeight) + Stop * CosWeight;
+  return Start*(1.0f - CosWeight) + Stop*CosWeight;
 }
 
 inline f32 EaseInQuint(f32 Start, f32 Stop, f32 Weight)
@@ -434,18 +438,18 @@ inline v2 V2(f32 Value) {
   return(V2(Value, Value));
 }
 
-inline v2 operator *(v2 Left, f32 Right) {
+inline v2 operator * (f32 Left, v2 Right) {
+  v2 Result = {{Left*Right.X, Left*Right.Y}};
+  return(Result);
+}
+
+inline v2 operator * (v2 Left, f32 Right) {
   v2 Result = {{Left.X*Right, Left.Y*Right}};
   return(Result);
 }
 
 inline v2u operator * (v2u Left, v2 Right) {
   v2u Result = V2U(Left.X * Right.X, Left.Y * Right.Y);
-  return(Result);
-}
-
-inline v2 operator *(f32 Left, v2 Right) {
-  v2 Result = {{Left*Right.X, Left*Right.Y}};
   return(Result);
 }
 
@@ -504,6 +508,11 @@ inline v2 FloorV2(v2 Vec) {
   return(Result);
 }
 
+inline v2 Clamp(v2 Vec, v2 Min, v2 Max) {
+  v2 Result = V2(Clamp(Vec.X, Min.X, Max.X), Clamp(Vec.Y, Min.Y, Max.Y));
+  return(Result);
+}
+
 inline v2 Clamp01(v2 Vec) {
   v2 Result = V2(Clamp01(Vec.X), Clamp01(Vec.Y));
   return(Result);
@@ -543,8 +552,43 @@ inline v2 NOZ(v2 Vec) {
 }
 
 inline v2 Lerp(v2 Start, v2 End, f32 Weight) {
-  v2 Result = (1.0f - Weight)*Start + Weight*End;
+  //v2 Result = Start*(1.0f - Weight) + End*Weight;
+  v2 Result = Start + Weight*(End - Start);
   return(Result);
+}
+
+inline v2 CosLerp(v2 Start, v2 Stop, f32 Weight)
+{
+  f32 CosWeight = (1.0f - cosf(Weight * PI)) / 2.0f;
+  return Start*(1.0f - CosWeight) + Stop * CosWeight;
+}
+
+inline v2 EaseInQuint(v2 Start, v2 Stop, f32 Weight)
+{
+  f32 Quint = Weight * Weight * Weight * Weight * Weight;
+  return Start*(1.0f - Quint) + Stop*Quint;
+}
+
+inline v2 EaseOutSin(v2 Start, v2 Stop, f32 Weight)
+{
+  f32 OutSin = sin((Weight * PI) / 2.0f);
+  return Start*(1.0f - OutSin) + Stop*OutSin;
+}
+
+inline v2 EaseOutCubic(v2 Start, v2 Stop, f32 Weight)
+{
+  f32 Cubic = 1.0f - powf(1.0f - Weight, 3);
+  return Start*(1.0f - Cubic) + Stop*Cubic;
+}
+
+inline v2 EaseInOutBack(v2 Start, v2 Stop, f32 Weight)
+{
+  static const f32 c1 = 1.70158;
+  static const f32 c2 = c1 * 1.525;
+  f32 OutBack = (Weight < 0.5)
+    ? ((powf(2 * Weight, 2) * ((c2 + 1.0) * 2.0 * Weight - c2)) / 2)
+    : ((powf(2 * Weight - 2, 2) * ((c2 + 1.0f) * (Weight * 2 - 2) + c2) + 2) / 2);
+  return Start*(1.0f - OutBack) + Stop*OutBack;
 }
 
 inline f32 AngleRadiansBetween(v2 A, v2 B) {
@@ -556,6 +600,15 @@ inline f32 AngleRadiansBetween(v2 A, v2 B) {
 inline v2 ScreenToClipSpace(v2 ScreenPos, v2 RenderDim) {
   return(V2((2 * ScreenPos.X) / RenderDim.Width - 1,
             (2 * ScreenPos.Y) / RenderDim.Height - 1));
+}
+
+inline v2 ScreenToClipSpace(v2i ScreenPos, v2u RenderDim) {
+  return(
+    ScreenToClipSpace(
+      V2(ScreenPos.X, ScreenPos.Y),
+      V2(RenderDim.X, RenderDim.Y)
+    )
+  );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -886,6 +939,11 @@ inline m4x4 operator *(m4x4 Left, m4x4 Right) {
   }
   
   return(Result);
+}
+
+inline m4x4& operator *=(m4x4& Left, m4x4 Right) {
+  Left = Left * Right;
+  return(Left);
 }
 
 // Multiply the row vector Left by the matrix Right.
@@ -1735,6 +1793,29 @@ internal bool ExtensionInList(const char *ExtensionList, char *Extension)
   }
   
   return(false);
+}
+
+internal u64 HexStringToInteger(const char *HexString)
+{
+  return(strtoul(HexString, NULL, 16));
+}
+
+// Converts an RGBA color of the hex string form RRGGBBAA into a v4 color
+// value.
+internal v4 HexColorToColor(const char *HexColor)
+{
+  size_t Length = strlen(HexColor);
+  Assert(Length == 8);
+
+  u64 ColorInt = HexStringToInteger(HexColor);
+  v4 Result = V4(
+    ((ColorInt >> 24) & 0xFF) / 255.0f,
+    ((ColorInt >> 16) & 0xFF) / 255.0f,
+    ((ColorInt >> 8) & 0xFF) / 255.0f,
+    (ColorInt & 0xFF) / 255.0f
+  );
+
+  return(Result);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -231,6 +231,7 @@ internal b32 LinuxAudioCreate(linux_audio *Audio, i32 LatencyMS, u32 SamplesPerS
   CircularAudioBufferCreate(&Audio->CircularBuffer, MaxBufferedPeriods * Audio->PeriodSize * Audio->Channels);
 
   // Start audio thread
+  printf("Audio: Thread: Starting\n");
   Audio->Thread = thread_create(LinuxAudioThreadLoop, Audio, THREAD_STACK_SIZE_DEFAULT);
   thread_set_high_priority(Audio->Thread);
 
@@ -347,7 +348,7 @@ internal i32 LinuxAudioThreadLoop(void *UserData)
         // NOTE: I'm not sure of the benefits and trade-offs of each. Different
         // examples do things differently, but recover seems to work better in
         // the case of an underrun.
-#if 1
+#if 0
         snd_pcm_prepare(Audio->Handle);
 #else
         Wrote = snd_pcm_recover(Audio->Handle, Wrote, 0);

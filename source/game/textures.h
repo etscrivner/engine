@@ -3,12 +3,14 @@
 
 #include "common/language_layer.h"
 #include "common/watched_file_set.h"
+#include "ext/thread.h"
 
 #define TEXTURE_CATALOG_MAX_TEXTURES 512
 #define TEXTURE_CATALOG_REFERENCE_NAME_MAX_SIZE 32
 
 typedef struct texture {
   b32 Loaded;
+  b32 Loading;
   GLuint ID;
   v2 Dim;
 } texture;
@@ -16,12 +18,18 @@ typedef struct texture {
 typedef struct sprite {
   texture Texture;
   v4 Source;
+  v2 Center;
 } sprite;
+
+internal sprite Sprite(texture Texture, v4 Source, v2 Center)
+{
+  sprite Result = sprite{Texture, Source, Center};
+  return(Result);
+}
 
 internal sprite Sprite(texture Texture, v4 Source)
 {
-  sprite Result = sprite{Texture, Source};
-  return(Result);
+  return(Sprite(Texture, Source, V2(Source.Width / 2, Source.Height/2)));
 }
 
 typedef struct texture_catalog_entry {
@@ -33,6 +41,7 @@ typedef struct texture_catalog_entry {
 typedef struct texture_catalog {
   watched_file_set Watcher;
   u32 volatile NumEntries;
+  thread_mutex_t EntryMutex;
   texture_catalog_entry Entry[TEXTURE_CATALOG_MAX_TEXTURES];
 } texture_catalog;
 

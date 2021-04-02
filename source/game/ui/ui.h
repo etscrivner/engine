@@ -90,6 +90,10 @@ internal void UIBringToFront(ui_context *UI, ui_container *Container);
 
 internal void UIRender(ui_context *UI, renderer *Renderer, texture_catalog *TextureCatalog, platform_state *Platform);
 
+// 
+// Custom UI system below
+//
+
 typedef struct button_style {
   v4 BackgroundColor;
   v4 HoverBackgroundColor;
@@ -101,10 +105,6 @@ internal b32 DrawRectButton(renderer *Renderer, app_context Ctx, v4 Rect, button
 internal b32 DrawSpriteButton(renderer *Renderer, app_context Ctx, sprite Sprite, v4 Rect, button_style Style);
 internal b32 DrawButton(renderer *Renderer, app_context Ctx, char *Title, v4 Rect, button_style Style);
 internal b32 DrawCheckbox(renderer *Renderer, app_context Ctx, texture_catalog *TextureCatalog, char *Title, v4 Rect, button_style Style, b32 *Value);
-
-// 
-// Experimental stuff below
-//
 
 typedef struct widget_id {
   i32 ParentID;
@@ -122,6 +122,7 @@ widget_id WIDGET_ID_none = {-1, -1, -1};
 typedef struct ui_style {
   f32 TitleBarHeight;
   f32 ButtonHeight;
+  v2 MinWindowSize;
   v4 WindowColor;
   v4 TitleBarColor;
   button_style CloseButton;
@@ -145,7 +146,6 @@ typedef struct ui_state {
   v2i MousePos;
   v2i LastMousePos;
   v2i MouseDelta;
-  v2u RenderDim;
 
   widget_id CurrentParent;
   v4 ParentOffset;

@@ -120,7 +120,7 @@ internal i32 WatchedFileSetAdd(watched_file_set *Set, char *FileName)
       Assert(strlen(FileName) < WATCHED_FILE_NAME_MAX_LENGTH);
       Result = Set->WatchDescriptors[NextEntry];
       strncpy(Set->FileNames[NextEntry], FileName, WATCHED_FILE_NAME_MAX_LENGTH);
-      fprintf(stderr, "watched file added: %s\n", Set->FileNames[NextEntry]);
+      // fprintf(stderr, "watched file added: %s\n", Set->FileNames[NextEntry]);
     } else {
       fprintf(stderr, "error: unable to add file '%s' to set: %s\n", FileName, strerror(errno));
     }
@@ -162,9 +162,9 @@ static b32 WatchedFileSetRemove(watched_file_set *Set, i32 WatcherHandle)
 }
 
 // TODO: This is _NOT_ thread-safe, and probably cannot be safely used with
-// threaded additionas to watched_file_set. We would need to introduce a 
-// mutex of some sort to allow only one thread to modify the state of the set
-// at any given time.
+// threaded additions to watched_file_set. We would need to introduce a mutex
+// of some sort to allow only one thread to modify the state of the set at any
+// given time.
 static b32 WatchedFileSetRemoveByFile(watched_file_set *Set, char *FileName)
 {
   b32 Result = false;

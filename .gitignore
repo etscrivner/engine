@@ -1,10 +1,22 @@
+# Exclude builds
 build
 
-# Don't add fonts to repo
+# Assets to ignore (for now)
 assets/fonts
+assets/sounds
+assets/textures
 
+# Third party libraries (for now)
+third-party
+
+# Emacs stuff
 *~
 \#*\#
 .\#*
+journal.org
+.projectile
+
+# Tooling stuff
 .clangd
-third-party
+compile_commands.json
+linux_lsan_suppressions.supp

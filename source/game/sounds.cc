@@ -37,7 +37,8 @@ internal b32 SoundManagerLoadSound(sound_manager *SoundManager, sound *Sound, pl
       Sound->DataLength = File.SizeBytes;
       Sound->Data = File.Data;
 
-      printf("Loaded Sound %s\n", SoundFile);
+      printf("Audio: Loaded sound\n");
+      printf("\t%s\n", SoundFile);
       printf("\tChannels: %d\n", Sound->Channels);
       printf("\tSampleRate: %d\n", Sound->SampleRate);
       printf("\tSamples: %d\n", Sound->Samples);

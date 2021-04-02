@@ -2,12 +2,42 @@
 
 const f32 ConsoleHeightPixels = 400;
 
+internal void CommandCamera(console *Console, app_context Ctx, char *Args)
+{
+  if (Args != NULL)
+  {
+    if (strcmp(Args, "debug") == 0) {
+      Ctx.Game->ShowCameraDebug = !Ctx.Game->ShowCameraDebug;
+      ConsoleLogf(Console, "Camera Debug: %s", Ctx.Game->ShowCameraDebug ? "on" : "off");
+    } else if (strcmp(Args, "recenter") == 0) {
+      Ctx.Game->Camera.RecenterOn = !Ctx.Game->Camera.RecenterOn;
+      ConsoleLogf(Console, "Camera Recenter: %s", Ctx.Game->Camera.RecenterOn ? "on" : "off");
+    }
+  }
+}
+
+internal void CommandMap(console *Console, app_context Ctx, char *Args)
+{
+  if (Args != NULL)
+  {
+    if (strcmp(Args, "debug") == 0) {
+      Ctx.Game->ShowMapDebug = !Ctx.Game->ShowMapDebug;
+      ConsoleLogf(Console, "Map Debug: %s", Ctx.Game->ShowMapDebug ? "on" : "off");
+    }
+  }
+}
+
 internal console_style DefaultConsoleStyle = {
   .ThumbPadding = 2.0f,
   .Colors = {
     [CONSOLE_COLOR_scrollbar_bg] = V4(0.0, 0.2, 0.8, 1.0),
     [CONSOLE_COLOR_scrollbar_thumb] = V4(0.0, 0.0, 0.5, 1.0)
   }
+};
+
+internal console_command ConsoleCommands[] = {
+  { .Command = "camera", .Cmd = CommandCamera },
+  { .Command = "map", .Cmd = CommandMap }
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -109,6 +139,19 @@ internal void ConsoleLog(console *Console, const char *Text)
 
 ///////////////////////////////////////////////////////////////////////////////
 
+internal void ConsoleLogf(console *Console, const char *Fmt, ...)
+{
+  local_persist char Output[256];
+  va_list List;
+  va_start(List, Fmt);
+  vsnprintf(Output, 256, Fmt, List);
+  va_end(List);
+
+  ConsoleLog(Console, Output);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 internal void ConsoleRender(console *Console, renderer *Renderer)
 {
   f32 TextHeight = Console->TextHeight;
@@ -142,6 +185,48 @@ internal void ConsoleRender(console *Console, renderer *Renderer)
   //       mapped from window dimensions to projective space dimensions.
   Renderer2DRightHanded(Renderer, RenderDim);
 
+  // Render console background
+  RendererPushFilledRect(
+    Renderer,
+    0,
+    V4(0, RenderDim.Height - ConsoleHeightPixels + TextHeight + YOffset, RenderDim.Width, ConsoleHeightPixels - TextHeight),
+    V4(0.8, 0.8, 0.8, 0.8));
+  // Render input line background
+  RendererPushFilledRect(
+    Renderer,
+    0,
+    V4(0, RenderDim.Height - ConsoleHeightPixels + YOffset, RenderDim.Width, TextHeight),
+    V4(0.5, 0.5, 0.5, 0.8)
+  );
+
+  // Render scrollbar if text exceeds content area size
+  f32 LogHeight = Console->LogLineCount * TextHeight;
+  f32 YOverflow = LogHeight - (ConsoleHeightPixels - TextHeight);
+  if (YOverflow > 0.0f)
+  {
+    RendererPushFilledRect(Renderer, 0, Console->ScrollBarRect, Console->Style.Colors[CONSOLE_COLOR_scrollbar_bg]);
+    RendererPushFilledRect(Renderer, 0, Console->ThumbRect, Console->Style.Colors[CONSOLE_COLOR_scrollbar_thumb]);
+  }
+
+  // Render cursor
+  f32 CursorOffset = FontTextRangeWidthPixels(Console->Font, Console->Input, 0, Console->CursorPos);
+  if (Console->SelectionStart == Console->SelectionEnd)
+  {
+#if 1 // Rect cursor
+    
+    RendererPushFilledRect(Renderer,
+                           0,
+                           V4(CursorOffset + 2, RenderDim.Height - ConsoleHeightPixels + YOffset, FontTextWidthPixels(Console->Font, "B"), FontTextHeightPixels(Console->Font)),
+                           V4(1, 1, 1, 0.5));
+#else // Line cursor
+    RendererPushLine(Renderer,
+                     0,
+                     V2(CursorOffset + 2, RenderDim.Height - ConsoleHeightPixels + YOffset - FontDescenderPixels(Console->Font)), 
+                     V2(CursorOffset + 2, RenderDim.Height - ConsoleHeightPixels + YOffset + FontAscenderPixels(Console->Font)),
+                     V4(1, 1, 1, 1));
+#endif
+  }
+
   // Render text log
   v4 LogAreaClip = V4(
     0,
@@ -154,22 +239,6 @@ internal void ConsoleRender(console *Console, renderer *Renderer)
     MapRectToResolution(LogAreaClip, V2(Console->RenderDim), V2(Console->WindowDim))
   );
   {
-    // Render console background
-    RendererPushFilledRect(
-      Renderer,
-      0,
-      V4(0, RenderDim.Height - ConsoleHeightPixels + TextHeight + YOffset, RenderDim.Width, ConsoleHeightPixels - TextHeight),
-      V4(0.8, 0.8, 0.8, 0.8));
-  
-    // Render scrollbar if text exceeds content area size
-    f32 LogHeight = Console->LogLineCount * TextHeight;
-    f32 YOverflow = LogHeight - (ConsoleHeightPixels - TextHeight);
-    if (YOverflow > 0.0f)
-    {
-      RendererPushFilledRect(Renderer, 0, Console->ScrollBarRect, Console->Style.Colors[CONSOLE_COLOR_scrollbar_bg]);
-      RendererPushFilledRect(Renderer, 0, Console->ThumbRect, Console->Style.Colors[CONSOLE_COLOR_scrollbar_thumb]);
-    }
-
     // Render the console log
     f32 LogYOffset = Console->LogLineCount * FontTextHeightPixels(Console->Font);
     foreach(I, Console->LogLineCount)
@@ -196,13 +265,6 @@ internal void ConsoleRender(console *Console, renderer *Renderer)
   );
   // Render input line
   {
-    // Render input line background
-    RendererPushFilledRect(Renderer,
-                           0,
-                           V4(0, RenderDim.Height - ConsoleHeightPixels + YOffset, RenderDim.Width, TextHeight),
-                           V4(0.5, 0.5, 0.5, 0.8));
-
-  
     // Render currently typed text
     if (Console->Input[0] != '\0') {
       RendererPushText(Renderer, 
@@ -211,25 +273,6 @@ internal void ConsoleRender(console *Console, renderer *Renderer)
                        Console->Input,
                        V2(0, RenderDim.Height - ConsoleHeightPixels + YOffset - FontDescenderPixels(Console->Font)), 
                        V4(1, 1, 1, 1));
-    }
-  
-    // Render cursor
-    f32 CursorOffset = FontTextRangeWidthPixels(Console->Font, Console->Input, 0, Console->CursorPos);
-    if (Console->SelectionStart == Console->SelectionEnd)
-    {
-#if 1 // Rect cursor
-    
-      RendererPushFilledRect(Renderer,
-                             0,
-                             V4(CursorOffset + 2, RenderDim.Height - ConsoleHeightPixels + YOffset, FontTextWidthPixels(Console->Font, "B"), FontTextHeightPixels(Console->Font)),
-                             V4(1, 1, 1, 0.5));
-#else // Line cursor
-      RendererPushLine(Renderer,
-                       0,
-                       V2(CursorOffset + 2, RenderDim.Height - ConsoleHeightPixels + YOffset - FontDescenderPixels(Console->Font)), 
-                       V2(CursorOffset + 2, RenderDim.Height - ConsoleHeightPixels + YOffset + FontAscenderPixels(Console->Font)),
-                       V4(1, 1, 1, 1));
-#endif
     }
   
     // Render Selection
@@ -303,6 +346,18 @@ internal void ConsoleUpdateScrollbar(console *Console, app_context Ctx, f32 YOff
 
 ///////////////////////////////////////////////////////////////////////////////
 
+internal void ConsoleRunCommand(console *Console, app_context Ctx, char* CommandLine)
+{
+  char *Command = strtok(CommandLine, " ");
+  foreach(I, ArrayCount(ConsoleCommands)) {
+    if (strcmp(ConsoleCommands[I].Command, Command) == 0) {
+      ConsoleCommands[I].Cmd(Console, Ctx, strtok(NULL, " "));
+    }
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 internal void ConsoleUpdate(console *Console, app_context Ctx, u64 DeltaTimeMicros)
 {
   const f32 LoadTimeMicros = 100 * 1000;
@@ -365,6 +420,7 @@ internal void ConsoleUpdate(console *Console, app_context Ctx, u64 DeltaTimeMicr
         if (KeyPressed(Ctx.Platform, KEY_enter))
         {
           ConsoleLog(Console, Console->Input);
+          ConsoleRunCommand(Console, Ctx, Console->Input);
           Console->Input[0] = '\0';
           Console->CursorPos = 0;
         }
